@@ -1,0 +1,38 @@
+{% extends "admin/change_list.html" %}
+{% load static %}
+
+{% block content %}
+<div style = "margin-bottom: 10px;">
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <input type="file" name="excel_file" id="excel_file" style="display: none;" onchange="toggleSubmitButton()">
+        
+        <label for="excel_file" class="custom-file-upload" style="display: inline-block; padding: 10px 20px; background-color: #2b6e8a; color: white; border-radius: 5px; cursor: pointer;">
+            Upload Bank Statement
+        </label>
+        
+        <input id="submit_button" type="submit" name="submit" class="button" 
+               style="font-size:15px; display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; border-radius: 5px;display: none;">
+    </form>
+</div>
+
+{{ block.super }}  <!-- This renders the default changelist view below the upload form -->
+{% endblock %}
+
+{% block extrahead %}
+<script>
+    function toggleSubmitButton() {
+        var fileInput = document.getElementById('excel_file');
+        var submitButton = document.getElementById('submit_button');
+        
+        // Show the submit button if a file is selected
+        if (fileInput.files.length > 0) {
+            submitButton.style.display = 'inline-block';
+        } else {
+            submitButton.style.display = 'none';
+        }
+    }
+</script>
+{% comment %} <link rel="stylesheet" type="text/css" href="{% static 'admin/css/vendor/select2/select2.css' %}">
+<script src="{% static 'admin/js/vendor/select2/select2.js' %}"></script> {% endcomment %}
+{% endblock %}

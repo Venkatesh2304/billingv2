@@ -1,0 +1,23 @@
+{% extends 'admin/base_site.html' %}
+
+{% block content %}
+  <h1>Are you sure you want to apply this action?</h1>
+
+  <form method="post" name="push">{% csrf_token %}
+    <p> 
+        Total No Of Cheques : {{total_chqs}} </br> 
+        Total No Of Bills : {{total_bills}} </br>
+        Total Amount : {{amt}} </br>
+    </p>
+    <ul>
+      {% for obj in items %}
+         <input type="hidden" name="{{ action_checkbox_name }}" value="{{ obj.pk }}">
+         {% comment %} <li>{{obj}}</li> {% endcomment %}
+      {% endfor %}
+    </ul>
+    <input type="hidden" name="action" value="push_collection">
+    <input type="submit" name = "apply" value="Push">
+    <input type="button" onclick="history.back()" value="Cancel" >
+</form>
+
+{% endblock %}
