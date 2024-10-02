@@ -33,6 +33,7 @@ class Orders(models.Model) :
     creditlock = models.BooleanField(default=False,db_default=False)
     release = models.BooleanField(default=False,db_default=False)
     delete = models.BooleanField(default=False,db_default=False)
+    partial = models.BooleanField(default=False,db_default=False)
 
     def __str__(self) -> str:
          return "1" + self.order_no

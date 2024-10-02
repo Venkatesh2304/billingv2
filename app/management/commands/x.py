@@ -31,7 +31,7 @@ warnings.filterwarnings("ignore")
 
 
 cur = connection.cursor()
-# cur.execute("DELETE from app_sync")
+cur.execute("DROP VIEW IF EXISTS app_outstanding_raw")
 print( pd.read_sql(f"SELECT sum(balance) from app_outstanding where balance <= -1",connection) )
 print( pd.read_sql(f"SELECT * from app_collection where bill_id = 'A41844' ",connection) )
 print( pd.read_sql(f"SELECT * from app_adjustment where to_bill_id = 'A01589' order by date desc limit 20 ",connection) )

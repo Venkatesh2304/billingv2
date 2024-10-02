@@ -106,7 +106,7 @@ def run_billing_process(billing_log,params : dict) :
     def filter_orders_fn(order: pd.Series) : 
         return all([
              order.on.count() <= line_count,
-             order.on.iloc[0] not in lines_count or lines_count[order.on.iloc[0]] == order.on.count(),
+             order.on.iloc[0] not in lines_count or lines_count[order.on.iloc[0]] == order.on.count(),  #WARNING: Removed lines count in billing check 
              "WHOLE" not in order.m.iloc[0] ,
              (order.t * order.aq).sum() > 100
         ])
@@ -526,11 +526,6 @@ class BankAdmin(ChangeOnlyAdminModel) :
               super().save_model(request,bank_obj,form,change)    
         super().save_related(request,form,formsets, change)
     
-
-admin_site.register(models.Orders,BillingAdmin)
-admin_site.register(models.Bank,BankAdmin)
-
-
 class OutstandingAdmin(ReadOnlyModel,admin.ModelAdmin) : 
     change_list_template = "outstanding.html"
     list_display = ["inum","party","beat","balance","phone","days"]
@@ -578,4 +573,7 @@ class OutstandingAdmin(ReadOnlyModel,admin.ModelAdmin) :
         return super().changelist_view(request, extra_context)
     
 admin_site.register(models.Outstanding,OutstandingAdmin)
+admin_site.register(models.Orders,BillingAdmin)
+admin_site.register(models.Bank,BankAdmin)
+
 
