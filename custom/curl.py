@@ -33,6 +33,7 @@ def parse_file(fname) -> CurlRequest:
                 ["response = requests.get(","_request = CurlRequest('GET',"],
                 ["response = requests.head(","_request = CurlRequest('HEAD',"]] : 
         curl_code = curl_code.replace(x,y)
+    print( curl_code )
     exec(curl_code)
     return locals()["_request"]    
 
