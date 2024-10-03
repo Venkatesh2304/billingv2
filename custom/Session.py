@@ -13,7 +13,7 @@ from uuid import uuid1
 import toml
 from bs4 import BeautifulSoup
 import shutil
-
+from pymongo import MongoClient
 from .std import get_mongo
 
 ## DB FIELDS
@@ -23,8 +23,8 @@ DB_USER_FIELD = "username"
 DB_COOKIE_FIELD = "_cookies"
 
 ## MongoDB setup
-# client = MongoClient("mongodb+srv://venkatesh2004:venkatesh2004@cluster0.9x1ccpv.mongodb.net/?retryWrites=true&w=majority")
-client = get_mongo()
+client = MongoClient("mongodb+srv://venkatesh2004:venkatesh2004@cluster0.9x1ccpv.mongodb.net/?retryWrites=true&w=majority")
+# client = get_mongo()
 collection = client[DB_COLLECTION_NAME]
 user_db = collection[DB_NAME]
 
