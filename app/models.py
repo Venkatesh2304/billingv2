@@ -42,6 +42,11 @@ class Orders(models.Model) :
         verbose_name = 'Orders'
         verbose_name_plural = 'Billing'
 
+class AllOrders(Orders):
+    class Meta:
+        proxy = True
+        verbose_name = "All Orders"
+
 class OrderProducts(models.Model) : 
     order = models.ForeignKey(Orders,on_delete=models.CASCADE,related_name="products")
     product = models.TextField(max_length=100)

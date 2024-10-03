@@ -43,6 +43,7 @@ class AccessUser(object):
 admin_site = admin.AdminSite(name='myadmin')
 admin_site.has_permission = lambda r: setattr(r, 'user', AccessUser()) or True
 
+
 @register.tag(name="custom_result_list")
 def result_list_tag(parser, token):
     ##Custom result display for given results (used in billing statistics)
@@ -374,6 +375,27 @@ class BillingAdmin(ChangeOnlyAdminModel) :
         "time_interval_milliseconds" : time_interval_milliseconds , "time_interval" : time_interval , 
         "line_count" : line_count , "auto_action_type" : next_action })
 
+class OrdersAdmin(admin.ModelAdmin) : 
+    list_display = ["release","party","value","beat","coll","bills","salesman","phone","delete","place_order"] 
+    def value(self,obj) : 
+        return round( sum([ p.quantity * p.rate for p in obj.products.all() ]) or 0  , 2 )
+    
+    def bills(self,obj) :
+        today = datetime.date.today() 
+        bills = [  f"{-round(bill.balance)}*{(today - bill.date).days}"
+                 for bill in models.Outstanding.objects.filter(party = obj.party,beat = obj.beat.name,balance__lte = -1).all() ]
+        return "/ ".join(bills)
+    
+    def coll(self,obj) : 
+        today = datetime.date.today() 
+        coll = [  f"{round(coll.amt)}*{(today - coll.bill.date).days}"
+                 for coll in models.Collection.objects.filter(party = obj.party , date = today).all() ]
+        return "/ ".join(coll)
+    
+    def phone(self,obj) : 
+        return obj.party.phone or "-"
+    
+
 class BankStatementUploadForm(forms.Form):
     excel_file = forms.FileField()
 
@@ -576,6 +598,7 @@ class OutstandingAdmin(ReadOnlyModel,admin.ModelAdmin) :
     
 admin_site.register(models.Outstanding,OutstandingAdmin)
 admin_site.register(models.Orders,BillingAdmin)
+admin_site.register(models.AllOrders,OrdersAdmin)
 admin_site.register(models.Bank,BankAdmin)
 
 
