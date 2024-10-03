@@ -108,7 +108,7 @@ def run_billing_process(billing_log,params : dict) :
              order.on.count() <= line_count,
              order.on.iloc[0] not in lines_count or lines_count[order.on.iloc[0]] == order.on.count(),  #WARNING: Removed lines count in billing check 
              "WHOLE" not in order.m.iloc[0] ,
-             (order.t * order.aq).sum() > 100
+             (order.t * order.cq).sum() > 100
         ])
 
     billing = Billing(filter_orders_fn= filter_orders_fn)
