@@ -235,10 +235,15 @@ def get_bill_statistics(request) -> list :
             return models.BillStatistics.objects.exclude( type__contains = "LAST" ).reverse()
 
     today = (timezone.now()).date()
-    
-    today_stats = models.Billing.objects.filter(start_time__gte = today).aggregate( 
-        bill_count = Sum("bill_count") , collection_count = Count("collection") , 
-        bills_start = Min("start_bill_no") , bills_end = Min("end_bill_no") , 
+    sales_qs = models.Sales.objects.filter(date  = today,type = "sales")
+    today_stats = {"bill_count" : sales_qs.count() , "collection_count" : models.Collection.objects.filter(date  = today).count() }
+
+    if today_stats["bill_count"] : 
+       today_stats |= {"bills_start" : sales_qs.first().inum , "bills_end" : sales_qs.last().inum }
+    else :
+       today_stats |= {"bills_start" : None , "bills_end" : None }
+
+    today_stats |= models.Billing.objects.filter(start_time__gte = today).aggregate( 
         success = Count("status",filter=Q(status = 1)) , failed = Count("status",filter=Q(status = 3))
     )
 
@@ -281,7 +286,6 @@ class ReadOnlyModel() :
         return False
     def has_delete_permission(self, request, obj=None):
         return False
-
 
 class OrderProductsInline(ReadOnlyModel,admin.TabularInline) : 
     model = models.OrderProducts
@@ -351,8 +355,6 @@ class BillingAdmin(ChangeOnlyAdminModel) :
             request._set_post(original_post)
 
             action = request.POST.get("action_name")
-            if action == "outstanding" : 
-                return outstanding()
             if action == "start" : 
                 if not start(request) : 
                     time_interval_milliseconds = 5 * 1000
@@ -371,7 +373,6 @@ class BillingAdmin(ChangeOnlyAdminModel) :
         return super().changelist_view( request, extra_context={ "title" : "" ,"tables" : tables ,  
         "time_interval_milliseconds" : time_interval_milliseconds , "time_interval" : time_interval , 
         "line_count" : line_count , "auto_action_type" : next_action })
-
 
 class BankStatementUploadForm(forms.Form):
     excel_file = forms.FileField()
@@ -532,6 +533,7 @@ class OutstandingAdmin(ReadOnlyModel,admin.ModelAdmin) :
     today = datetime.date.today()
     ordering = ["date"]
     
+    
     class DaysAgoListFilter(admin.SimpleListFilter):
         title = 'Outstanding Days'
         parameter_name = 'date_before_today'
@@ -570,7 +572,7 @@ class OutstandingAdmin(ReadOnlyModel,admin.ModelAdmin) :
     def changelist_view(self, request, extra_context=None):
         # if all(check_all_last_sync(limit= 5*60)) :     
         sync_all_reports(limit = 5*60)
-        return super().changelist_view(request, extra_context)
+        return super().changelist_view(request, (extra_context or {})| {"title" : "Outstanding Report"})
     
 admin_site.register(models.Outstanding,OutstandingAdmin)
 admin_site.register(models.Orders,BillingAdmin)

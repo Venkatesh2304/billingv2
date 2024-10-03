@@ -6,10 +6,13 @@ from django.http import HttpResponse, JsonResponse
 import pandas as pd
 
 from app.common import query_db
+from custom.classes import Billing
 from .models import Outstanding
 from django.db.models import F
 from django.db.models.functions import Abs
 from django.db.models import Q
+from django import forms
+from django.middleware.csrf import get_token
 
 def get_outstanding(request, inum):
     try:
@@ -33,11 +36,37 @@ def get_outstanding_report(request) :
     pivot_fn(outstanding[outstanding.days >= 21]).to_excel(writer, sheet_name='21 Days')
     pivot_fn(outstanding[outstanding.days >= 28]).to_excel(writer, sheet_name='28 Days')
     outstanding.to_excel(writer, sheet_name='ALL BILLS',index=False)
-    writer.save()
+    writer.close()
     output.seek(0)
     response = HttpResponse(output.getvalue(), content_type='application/vnd.ms-excel')
     response['Content-Disposition'] = 'attachment; filename="' + f"outstanding_{date}.xlsx" + '"'
     return response 
+
+
+class ManualPrintForm(forms.Form):
+    from_bill = forms.CharField(label='From Bill', max_length=100)
+    to_bill = forms.CharField(label='To Bill', max_length=100)
+
+def manual_print_view(request):
+    form = ManualPrintForm()
+    
+    if request.method == 'POST':
+        form = ManualPrintForm(request.POST)
+        if form.is_valid():
+            from_bill = form.cleaned_data['from_bill']
+            to_bill = form.cleaned_data['to_bill']
+            i = Billing()
+            i.bills = [from_bill,to_bill]
+            i.Download()
+
+    csrf_token = get_token(request)
+    response_html = f"""<form method="post">
+             <input type="hidden" name="csrfmiddlewaretoken" value="{csrf_token}">
+             {form.as_p()}
+            <button type="submit">Submit</button>
+        </form>"""
+    
+    return HttpResponse(response_html)
 
 class BillAutocomplete(autocomplete.Select2QuerySetView):
     def get_queryset(self):

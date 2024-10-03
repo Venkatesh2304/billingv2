@@ -11,7 +11,8 @@ def sales_insert(sales_reg,sales_gst,sales_type,permanent) :
     sales_reg["type"] = sales_type
     sales_reg["txval"] = sales_reg[["crdsales","schdisc","cashdisc"]].sum(axis=1)
     sales_reg["discount"] = sales_reg[SALES_DISC_COLUMS[2:]].sum(axis=1)
-    disc = pd.melt(sales_reg,id_vars=["inum"],value_vars=SALES_DISC_COLUMS,var_name='sub_type', value_name='amt')
+    disc = pd.melt(sales_reg,id_vars=["inum"],value_vars=SALES_DISC_COLUMS,var_name='sub_type', value_name='amt_new')
+    disc = disc.rename(columns={"amt_new":"amt"})
     disc["type"] = disc["sub_type"].replace({"schdisc":"stpr","pecom":"stpr"})
     disc = disc.rename(columns={"inum":"bill_id"})
     both_insert("sales",sales_reg[ Sales.columns + ["tcs"] ],sales_gst,"bill")

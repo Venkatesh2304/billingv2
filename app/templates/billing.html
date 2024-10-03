@@ -172,7 +172,7 @@
             <button type="submit" form="changelist-form" name="action_name" value="start" id = "start" >Start</button>
             <button type="submit" form="changelist-form" name="action_name" value="quit">Quit</button>
             {% comment %} <button type="submit" form="changelist-form" name="action_name" value="outstanding" id = "outstanding" >Outstanding</button> {% endcomment %}
-            <button type="submit" form="changelist-form" name="action_name" value="manual">Manual Printing</button>
+            <button onclick="window.open('/manual_print','_blank')">Manual Printing</button>
             <button type="submit" form="changelist-form" name="action_name" value="refresh" id="refresh" hidden>Refresh</button>
             {% if cl.formset %}
           <div>{{ cl.formset.management_form }}</div>
