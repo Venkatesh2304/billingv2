@@ -28,18 +28,15 @@ class CurlRequest(Request) :
 
 def parse_file(fname) -> CurlRequest:
     print(fname)
-    
     if platform.system() == 'Linux' :
        curl_code = subprocess.run([f"cat {fname} | curlconverter -"],capture_output=True,shell="bash")
     else : 
-        curl_code = subprocess.run(f"type {fname} | curlconverter -",capture_output=True,shell=True)
-
+        curl_code = subprocess.run(f"type {fname} | curlconverter -",capture_output=True,shell=True)    
     curl_code = curl_code.stdout.decode('ascii') 
     for x,y in [["response = requests.post(","_request = CurlRequest('POST',"],
                 ["response = requests.get(","_request = CurlRequest('GET',"],
                 ["response = requests.head(","_request = CurlRequest('HEAD',"]] : 
         curl_code = curl_code.replace(x,y)
-    print( curl_code )
     exec(curl_code)
     return locals()["_request"]    
 
