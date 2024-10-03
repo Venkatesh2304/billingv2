@@ -8,6 +8,7 @@ import subprocess
 import json
 from pathlib import Path
 import os
+import platform
 
 def is_url(url: str) -> bool:
     try:
@@ -27,13 +28,12 @@ class CurlRequest(Request) :
 
 def parse_file(fname) -> CurlRequest:
     print(fname)
-    curl_code = subprocess.run([f"cat {fname} | curlconverter -"],capture_output=True,shell="bash")
+    curl_code = subprocess.run([f"{'cat' if platform.system() == 'Linux' else 'type'} {fname} | curlconverter -"],capture_output=True,shell="bash")
     curl_code = curl_code.stdout.decode('ascii') 
     for x,y in [["response = requests.post(","_request = CurlRequest('POST',"],
                 ["response = requests.get(","_request = CurlRequest('GET',"],
                 ["response = requests.head(","_request = CurlRequest('HEAD',"]] : 
         curl_code = curl_code.replace(x,y)
-    print( curl_code )
     exec(curl_code)
     return locals()["_request"]    
 
