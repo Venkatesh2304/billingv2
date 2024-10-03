@@ -28,6 +28,7 @@ class CurlRequest(Request) :
 
 def parse_file(fname) -> CurlRequest:
     print(fname)
+    print(f"{'cat' if platform.system() == 'Linux' else 'type'} {fname} | curlconverter -")
     curl_code = subprocess.run([f"{'cat' if platform.system() == 'Linux' else 'type'} {fname} | curlconverter -"],capture_output=True,shell="bash")
     curl_code = curl_code.stdout.decode('ascii') 
     for x,y in [["response = requests.post(","_request = CurlRequest('POST',"],
