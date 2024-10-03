@@ -1,7 +1,6 @@
 git stash
 git pull --ff
 source .venv/Scripts/activate
-# pip install -r requirements.txt
-# python3 manage.py migrate
-tail -f /dev/null
+pip install -r requirements.txt
+python3 manage.py migrate
 
