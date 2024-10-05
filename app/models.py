@@ -42,6 +42,9 @@ class Orders(models.Model) :
     def allocated_value(self) : 
         return round( sum([ p.allocated * p.rate for p in self.products.all() ]) or 0  , 2 )
 
+    def partial(self) : 
+        return bool( (self.products.filter(allocated = 0).count() and self.products.filter(allocated__gt = 0).count()) or self.products.filter(billed = True).count() )  
+
     def __str__(self) -> str:
          return self.order_no
     

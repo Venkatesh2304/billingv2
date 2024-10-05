@@ -417,7 +417,6 @@ class OrdersAdmin(BaseOrderAdmin) :
     list_display =  ["partial","order","party","value","lines","beat","coll","bills","salesman","creditlock","delete","phone"] #"release","place_order", 
     ordering = ["place_order"]
     actions = ["force_order",delete_selected]
-    # list_filter = ["place_order"]
 
     class CustomFilter(admin.SimpleListFilter):
         title = 'filter'
@@ -439,13 +438,13 @@ class OrdersAdmin(BaseOrderAdmin) :
                 return queryset.annotate(lines_count = Count(F('products'))).filter(
                         lines_count__lt = 10)
             if self.value() == 'already_billed':
-                return queryset.filter(order_no__in = [ for order in queryset if order. ])
+                return queryset.filter(order_no__in = [ order.order_no for order in queryset if order.partial() ])
             return queryset
 
     list_filter = [CustomFilter]
 
     def partial(self,obj) :
-        return bool( (obj.products.filter(allocated = 0).count() and obj.products.filter(allocated__gt = 0).count()) or obj.products.filter(billed = True).count() )  
+        return obj.partial()
     partial.boolean = True  
 
     def order(self, obj):
