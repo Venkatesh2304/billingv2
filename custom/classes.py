@@ -1,4 +1,5 @@
 from collections import defaultdict
+import copy
 import datetime
 from io import BytesIO
 import dateutil.relativedelta as relativedelta
@@ -372,7 +373,7 @@ class Billing(IkeaDownloader) :
         self.logger.info(f"Imported Collection :: {self.pushed_collection_ids}")
         postcollection = self.post("/rsunify/app/quantumImport/importSelectedCollection", json=coll_payload).json()
         
-    def Order(self):
+    def Order(self,delete_order_numbers = []):
         get_shikhar = get_curl("ikea/billing/getshikhar")
         get_shikhar.json["importDate"] =  self.today.strftime("%d/%m/%Y")
         shikhar_data = get_shikhar.send(self).json()["shikharOrderList"]
@@ -383,6 +384,17 @@ class Billing(IkeaDownloader) :
         self.market_order = get_order_req.send(self).json()
     
         order_data = self.market_order["mol"]
+        
+        print( delete_order_numbers )
+        if delete_order_numbers :
+            delete_orders_data = copy.deepcopy(order_data)
+            for order in delete_orders_data :
+                order["ck"] = (order["on"] in delete_order_numbers)
+            delete_market_order = get_curl("ikea/billing/delete_orders")
+            delete_market_order.json |= {"mol": delete_orders_data , "id": self.today.strftime("%d/%m/%Y")}
+            delete_market_order.send(self).text
+            order_data = [order for order in order_data if order["on"] not in delete_order_numbers] 
+        
         self.all_orders = pd.DataFrame(order_data)
         orders = self.all_orders.groupby("on", as_index=False)
         orders = orders.filter(self.filter_orders_fn)
@@ -405,6 +417,8 @@ class Billing(IkeaDownloader) :
         # del cr_lock_parties["on_str"]
         # self.creditlock = self.interpret(cr_lock_parties.to_dict(orient="index"))
 
+            
+            
         for order in order_data :
             order["ck"] = (order["on"] in orders.on.values)
 

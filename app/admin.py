@@ -31,6 +31,7 @@ from app.sales_import import AdjustmentInsert, CollectionInsert, SalesInsert
 from django.urls import path
 from django.contrib import messages
 import dal.autocomplete
+from django.contrib.admin.actions import delete_selected
 
 
 def user_permission(s,*a,**kw) : 
@@ -92,29 +93,33 @@ billing_lock = threading.Lock()
 def run_billing_process(billing_log,params : dict) :
     
     today = timezone.now().date()
-    last_billing = models.Billing.objects.filter(start_time__gte = today - datetime.timedelta(days=1)).last()
-    orders = models.Orders.objects.filter(billing = last_billing) if last_billing else models.Orders.objects.none()
+    last_billing = models.Billing.objects.filter(start_time__gte = today).order_by("-start_time")
+    orders = models.Orders.objects.filter(billing = last_billing[1]) if last_billing.count() > 1 else models.Orders.objects.none()
 
     line_count = int(params["line_count"][0])    
-    today_pushed_collections = models.PushedCollection.objects.filter( billing__start_time__gte = today ).values_list("party_code",flat=True)
-    lines_count = { order.order_no : order.products.count() for order in models.Orders.objects.filter(date = datetime.datetime.now().date()) }
-    delete_orders = list(orders.filter(delete = True))
-    delete_orders = [ order.order_no for order in delete_orders ] 
-    creditrelease = list(orders.filter(release = True))
+    # today_pushed_collections = models.PushedCollection.objects.filter( billing__start_time__gte = today ).values_list("party_code",flat=True)
+    lines_count = { order.order_no : order.products.count() for order in models.Orders.objects.filter(date = today) }
+    delete_orders = [ order.order_no for order in orders.filter(delete = True).all() ]
+    creditrelease = list(orders.filter(release = True,delete=False))
     creditrelease = [{ "partyCode":order.party_id , "parCodeRef":order.party_id , "parHllCode": order.party.hul_code , 
                        "showPLG" : order.beat.plg.replace('+','%2B') } for order in creditrelease ]
+    forced_orders = [ order.order_no for order in orders.filter(force_order = True).all() ]
+    
+    print( delete_orders )
+    print( forced_orders )
+    print( creditrelease )
     
     def filter_orders_fn(order: pd.Series) : 
         return all([
              order.on.count() <= line_count,
-             order.on.iloc[0] not in lines_count or lines_count[order.on.iloc[0]] == order.on.count(),  #WARNING: Removed lines count in billing check 
+             order.on.iloc[0] not in lines_count or lines_count[order.on.iloc[0]] == order.on.count(),  
              "WHOLE" not in order.m.iloc[0] ,
              (order.t * order.cq).sum() > 100
-        ])
+        ]) or (order.on.iloc[0] in forced_orders)
 
     billing = Billing(filter_orders_fn= filter_orders_fn)
     billing_process_functions = [ billing.Sync , billing.Prevbills ,  (lambda : billing.release_creditlocks(creditrelease)) , 
-                                  billing.Collection ,  billing.Order , (lambda : sync_all_reports(billing)) ,  billing.Delivery , 
+                                  billing.Collection ,  (lambda : billing.Order(delete_orders)) , (lambda : sync_all_reports(billing)) ,  billing.Delivery , 
                                   billing.Download , billing.Printbill ]
 
     billing_process =  dict(zip(billing_process_names,billing_process_functions)) 
@@ -138,23 +143,35 @@ def run_billing_process(billing_log,params : dict) :
                  update_conflicts=True,
                  unique_fields=['code'],
                  update_fields=["name"])
+                filtered_orders = billing.filtered_orders.on.values
                 
                 ## Warning add and condition 
-                models.Orders.objects.bulk_create([ 
+                order_objects:list[models.Orders] = models.Orders.objects.bulk_create([ 
                     models.Orders( order_no=row.on,party_id = row.pc,salesman=row.s, 
-                            creditlock = ("Credit Exceeded" in row.ar) , place_order = (row.on in billing.filtered_orders.on) , 
+                            creditlock = ("Credit Exceeded" in row.ar) , place_order = (row.on in filtered_orders) , 
                         beat_id = row.mi , billing = billing_log , date = datetime.datetime.now().date() , type = row.ot   ) 
                     for _,row in orders.drop_duplicates(subset="on").iterrows() ],
                  update_conflicts=True,
                  unique_fields=['order_no'],
                  update_fields=["billing_id","type","creditlock","place_order"])
                 
+                prev_allocated_value = { order.order_no :  order.allocated_value() for order in order_objects }
+        
+                models.OrderProducts.objects.filter(order__in = order_objects).update(billed = True,allocated = F("quantity"),reason = "")
                 models.OrderProducts.objects.bulk_create([ models.OrderProducts(
-                    order_id=row.on,product=row.bd,quantity=row.cq,allocated = row.aq,rate = row.t) for _,row in orders.iterrows() ] , 
+                    order_id=row.on,product=row.bd,quantity=row.cq,allocated = row.aq,rate = row.t,billed=False,reason = row.ar) for _,row in orders.iterrows() ] , 
                  update_conflicts=True,
                  unique_fields=['order_id','product'],
-                 update_fields=['allocated','reason'])         
-                
+                 update_fields=['quantity','rate','allocated','reason','billed','reason'])
+       
+                curr_allocated_value = { order.order_no :  order.allocated_value() for order in order_objects }
+                for order in order_objects : 
+                    diff = curr_allocated_value[order.order_no] - prev_allocated_value[order.order_no]
+                    if diff >= 1 : 
+                        order.release = False
+                        order.force_order = False
+                        order.save()
+                         
             if process_name == "COLLECTION" : 
                
                models.PushedCollection.objects.bulk_create([ models.PushedCollection(
@@ -248,7 +265,7 @@ def get_bill_statistics(request) -> list :
         success = Count("status",filter=Q(status = 1)) , failed = Count("status",filter=Q(status = 3))
     )
 
-    last_stats = models.Billing.objects.filter(start_time__gte = today).last()
+    last_stats = models.Billing.objects.filter(start_time__gte = today).order_by("-start_time").first()
 
     if last_stats is not None : 
         stats = {"LAST BILLS COUNT" : last_stats.bill_count or 0,"LAST COLLECTION COUNT" : last_stats.collection.count() ,  
@@ -272,6 +289,17 @@ def get_bill_statistics(request) -> list :
     tables[2].formset = None
     return tables 
 
+def get_last_billing() : 
+    billing_qs = models.Billing.objects.all().order_by("-start_time")
+    last_billing = billing_qs.first()      
+    if last_billing : 
+        order_status = models.ProcessStatus.objects.filter(billing = last_billing,process = "ORDER").first()
+        if order_status and (order_status.status in [1,3]) :  pass
+        else : 
+            if billing_qs.count() > 1 : 
+                last_billing = billing_qs[1]
+    return last_billing
+
 class ChangeOnlyAdminModel(admin.ModelAdmin) : 
     def has_add_permission(self, request,obj = None):
         return False
@@ -293,20 +321,13 @@ class OrderProductsInline(ReadOnlyModel,admin.TabularInline) :
     show_change_link = True
     verbose_name_plural = "products"
 
-## Billing Admin
-class BillingAdmin(ChangeOnlyAdminModel) :   
-
-    change_list_template = "billing.html"
-    list_display_links = ["party"]
-    list_display = ["release","party","value","beat","coll","bills","salesman","phone","delete"] 
-    list_editable = ["release","delete"]
-    ordering = ["salesman"]
+class BaseOrderAdmin(ChangeOnlyAdminModel) :   
     inlines = [OrderProductsInline]
-    readonly_fields = ("order_no",'date','party','type','salesman','beat',"billing",'creditlock','release','delete','place_order')
+    readonly_fields = ("order_no",'date','party','type','salesman','beat',"billing",'creditlock','release','delete','place_order','force_order')
     actions = None
 
     def value(self,obj) : 
-        return round( sum([ p.quantity * p.rate for p in obj.products.all() ]) or 0  , 2 )
+        return obj.bill_value()
     
     def bills(self,obj) :
         today = datetime.date.today() 
@@ -323,9 +344,23 @@ class BillingAdmin(ChangeOnlyAdminModel) :
     def phone(self,obj) : 
         return obj.party.phone or "-"
     
+    def lines(self,obj) : 
+        return obj.products.filter(allocated = 0).count()
+    
+
+## Billing Admin
+class BillingAdmin(BaseOrderAdmin) :   
+
+    change_list_template = "billing.html"
+    list_display_links = ["party"]
+    list_display = ["release","party","value","beat","lines","coll","bills","salesman","phone","delete"] 
+    list_editable = ["release","delete"]
+    ordering = ["-release","salesman"]
+
     def get_queryset(self, request):
-        qs = super().get_queryset(request).filter(creditlock=True) 
-        if not request.filter_queryset : return qs 
+        qs = super().get_queryset(request)
+        if (not hasattr(request,"filter_queryset")) or  (not request.filter_queryset) : return qs 
+        qs = qs.filter(creditlock=True) 
         billing_qs = models.Billing.objects.all().order_by("-start_time")
         last_billing = billing_qs.first()      
         # billings = list(models.Billing.objects.filter(start_time__gte = datetime.datetime.now() - datetime.timedelta(minutes=30)))
@@ -371,30 +406,76 @@ class BillingAdmin(ChangeOnlyAdminModel) :
         tables = get_bill_statistics(request) 
         line_count = int(request.POST.get("line_count",100))
         request.filter_queryset = True 
+
         return super().changelist_view( request, extra_context={ "title" : "" ,"tables" : tables ,  
         "time_interval_milliseconds" : time_interval_milliseconds , "time_interval" : time_interval , 
-        "line_count" : line_count , "auto_action_type" : next_action })
+        "line_count" : line_count , "auto_action_type" : next_action  })
 
-class OrdersAdmin(admin.ModelAdmin) : 
-    list_display = ["release","party","value","beat","coll","bills","salesman","phone","delete","place_order"] 
-    def value(self,obj) : 
-        return round( sum([ p.quantity * p.rate for p in obj.products.all() ]) or 0  , 2 )
+class OrdersAdmin(BaseOrderAdmin) :
+   
+    list_display_links = None
+    list_display =  ["partial","order","party","value","lines","beat","coll","bills","salesman","creditlock","delete","phone"] #"release","place_order", 
+    ordering = ["place_order"]
+    actions = ["force_order",delete_selected]
+    # list_filter = ["place_order"]
+
+    class CustomFilter(admin.SimpleListFilter):
+        title = 'filter'
+        parameter_name = 'filter'
+
+        def lookups(self, request, model_admin):
+            return (
+                ('less_than_200', 'less_than_200'),
+                ('less_than_10_lines', 'less_than_10_lines'),
+                ('already_billed', 'already_billed'),
+            )
+
+        def queryset(self, request, queryset):
+            today = timezone.now().date()
+            if self.value() == 'less_than_200':
+                return queryset.annotate(bill_value_field = Sum(F('products__quantity') * F('products__rate'))).filter(
+                        bill_value_field__lt = 200).order_by("bill_value_field")
+            if self.value() == 'less_than_10_lines':
+                return queryset.annotate(lines_count = Count(F('products'))).filter(
+                        lines_count__lt = 10)
+            if self.value() == 'already_billed':
+                return queryset.filter(order_no__in = [ for order in queryset if order. ])
+            return queryset
+
+    list_filter = [CustomFilter]
+
+    def partial(self,obj) :
+        return bool( (obj.products.filter(allocated = 0).count() and obj.products.filter(allocated__gt = 0).count()) or obj.products.filter(billed = True).count() )  
+    partial.boolean = True  
+
+    def order(self, obj):
+        url = f'/app/ordersproxy/{obj.order_no}/change/' 
+        return format_html('<a href="{}" target="_blank">{}</a>',url,obj.order_no)
     
-    def bills(self,obj) :
-        today = datetime.date.today() 
-        bills = [  f"{-round(bill.balance)}*{(today - bill.date).days}"
-                 for bill in models.Outstanding.objects.filter(party = obj.party,beat = obj.beat.name,balance__lte = -1).all() ]
-        return "/ ".join(bills)
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        if "/change" in request.path : return qs 
+        last_billing = get_last_billing()
+        if last_billing is None : qs.none()
+        return qs.filter(billing = last_billing).exclude(beat__name__contains = "WHOLE") #WARNING
     
-    def coll(self,obj) : 
-        today = datetime.date.today() 
-        coll = [  f"{round(coll.amt)}*{(today - coll.bill.date).days}"
-                 for coll in models.Collection.objects.filter(party = obj.party , date = today).all() ]
-        return "/ ".join(coll)
-    
-    def phone(self,obj) : 
-        return obj.party.phone or "-"
-    
+    def changelist_view(self, request, extra_context=None):   
+        title = f"Rejected Orders @ {get_last_billing().start_time.strftime('%d %B %Y, %I:%M:%S %p')}"
+        return super().changelist_view( request, extra_context={ "title" : title })
+
+    def has_delete_permission(self, request, obj=None):
+        return True
+
+    @admin.action(description="Force Place Order & Release Lock")
+    def force_order(self, request, queryset) : 
+        queryset.update(place_order = True,force_order=True)
+        queryset.filter(creditlock=True).update(release = True)
+
+    def delete_model(self, request, obj):
+        self.delete_queryset(request,models.Orders.objects.filter(order_no = obj.order_no))
+        
+    def delete_queryset(self, request, queryset):
+        queryset.update(delete = True)
 
 class BankStatementUploadForm(forms.Form):
     excel_file = forms.FileField()
@@ -598,7 +679,7 @@ class OutstandingAdmin(ReadOnlyModel,admin.ModelAdmin) :
     
 admin_site.register(models.Outstanding,OutstandingAdmin)
 admin_site.register(models.Orders,BillingAdmin)
-admin_site.register(models.AllOrders,OrdersAdmin)
+admin_site.register(models.OrdersProxy,OrdersAdmin)
 admin_site.register(models.Bank,BankAdmin)
 
 

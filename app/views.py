@@ -24,16 +24,20 @@ def get_outstanding(request, inum):
 def get_outstanding_report(request) : 
     date = request.POST.get("date") or str(datetime.date.today()) 
     day = datetime.datetime.strptime(date,"%Y-%m-%d").strftime("%A").lower()
-    outstanding = query_db(f"""select salesman_name as salesman , (select name from app_party where party_id = code) as party , beat , inum as bill , 
+    outstanding = query_db(f"""select * from (
+    select salesman_name as salesman , (select name from app_party where party_id = code) as party , beat , inum as bill , 
     (select -amt from app_sales where inum = app_outstanding.inum) as bill_amt , -balance as balance , 
     (select phone from app_party where code = party_id) as phone , 
-    round(julianday('{date}') - julianday(date)) as days 
+    round(julianday('{date}') - julianday(date)) as days , 
+    days as weekday 
     from app_outstanding left outer join app_beat on app_outstanding.beat = app_beat.name
-    where days  like '%{day}%' and balance <= -1 and beat not like '%WHOLESALE%' """,is_select = True)
+    where  balance <= -1 and beat not like '%WHOLESALE%' )
+    where days >= 28 or weekday like '%{day}%'
+    """,is_select = True)
     pivot_fn = lambda df : pd.pivot_table(df,index=["salesman","beat","party","bill"],values=['balance',"days","phone"],aggfunc = "first")
     output = BytesIO()
     writer = pd.ExcelWriter(output, engine='xlsxwriter')
-    pivot_fn(outstanding[outstanding.days >= 21]).to_excel(writer, sheet_name='21 Days')
+    pivot_fn(outstanding[ (outstanding.days >= 21) & outstanding.weekday.str.contains(day) ]).to_excel(writer, sheet_name='21 Days')
     pivot_fn(outstanding[outstanding.days >= 28]).to_excel(writer, sheet_name='28 Days')
     outstanding.to_excel(writer, sheet_name='ALL BILLS',index=False)
     writer.close()

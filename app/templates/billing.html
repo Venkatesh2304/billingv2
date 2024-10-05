@@ -88,6 +88,8 @@
         animation: blinker 1s linear infinite;
         background: green;
     }
+  .hyperlink { font-size : 18px ; text-decoration: underline !important; color:blue !important; }
+
 </style>
 
 
@@ -98,6 +100,7 @@
 {% load i18n admin_urls static admin_list %}
 
 {% block extrastyle %}
+
   {{ block.super }}
   <link rel="stylesheet" href="{% static "admin/css/changelists.css" %}">
   {% if cl.formset %}
@@ -121,6 +124,7 @@
 <script>
     window.setTimeout(() =>  document.getElementById("{{auto_action_type}}").click() , {{time_interval_milliseconds}} )
 </script>
+
 {% endblock %}
 
 {% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-{{ opts.model_name }} change-list{% endblock %}
@@ -171,8 +175,12 @@
             <input type="number" name="time_interval" placeholder="Sleep time in minutes" value="{{time_interval}}" >
             <button type="submit" form="changelist-form" name="action_name" value="start" id = "start" >Start</button>
             <button type="submit" form="changelist-form" name="action_name" value="quit">Quit</button>
-            {% comment %} <button type="submit" form="changelist-form" name="action_name" value="outstanding" id = "outstanding" >Outstanding</button> {% endcomment %}
-            <button onclick="window.open('/manual_print','_blank')">Manual Printing</button>
+            {% comment %} <button onclick="window.open('/manual_print','_blank')">Manual Printing</button> {% endcomment %}
+            {% comment %} <button onclick="window.open('/app/ordersproxy/?place_order__exact=0','_blank')">View Orders</button> {% endcomment %}
+            
+            <a href='/manual_print' target="_blank" class="hyperlink" style="margin-right: 15px;margin-left: 15px;" >Manual Printing</a>
+            <a href='/app/ordersproxy/?place_order__exact=0' target="_blank" class="hyperlink" >Rejected Orders</a>
+            
             <button type="submit" form="changelist-form" name="action_name" value="refresh" id="refresh" hidden>Refresh</button>
             {% if cl.formset %}
           <div>{{ cl.formset.management_form }}</div>

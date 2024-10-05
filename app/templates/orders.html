@@ -1,0 +1,10 @@
+{% extends "admin/change_list.html" %}
+{% load i18n %}
+
+{% block object-tools %}
+    <div class="object-tools">
+            {% csrf_token %}
+            <input type="submit" value="{% trans 'Save' %}" class="default" style="width: 100px ;" onclick="document.querySelector('#changelist-form > p > input').click()"/>
+        {{ block.super }} 
+    </div>
+{% endblock %}

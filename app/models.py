@@ -30,22 +30,29 @@ class Orders(models.Model) :
     party = models.ForeignKey("app.Party",on_delete=models.CASCADE,related_name="orders",null=True,blank=True)
     beat = models.ForeignKey("app.Beat",on_delete=models.CASCADE,related_name="orders",null=True,blank=True)
     place_order = models.BooleanField(default=False,db_default=False)
+    force_order = models.BooleanField(default=False,db_default=False)
     creditlock = models.BooleanField(default=False,db_default=False)
     release = models.BooleanField(default=False,db_default=False)
     delete = models.BooleanField(default=False,db_default=False)
-    partial = models.BooleanField(default=False,db_default=False)
+    # partial = models.BooleanField(default=False,db_default=False)
+
+    def bill_value(self) : 
+        return round( sum([ p.quantity * p.rate for p in self.products.all() if (p.allocated == 0) ]) or 0  , 2 )
+
+    def allocated_value(self) : 
+        return round( sum([ p.allocated * p.rate for p in self.products.all() ]) or 0  , 2 )
 
     def __str__(self) -> str:
-         return "1" + self.order_no
+         return self.order_no
     
     class Meta : 
         verbose_name = 'Orders'
         verbose_name_plural = 'Billing'
 
-class AllOrders(Orders):
+class OrdersProxy(Orders):
     class Meta:
         proxy = True
-        verbose_name = "All Orders"
+        verbose_name = "order"
 
 class OrderProducts(models.Model) : 
     order = models.ForeignKey(Orders,on_delete=models.CASCADE,related_name="products")
@@ -54,6 +61,7 @@ class OrderProducts(models.Model) :
     allocated =  models.IntegerField()
     rate = models.FloatField()
     reason = models.TextField(max_length=50)
+    billed = models.BooleanField(default=False,db_default=False)
     
     def __str__(self) -> str:
          return self.product
