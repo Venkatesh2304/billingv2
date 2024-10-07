@@ -121,7 +121,7 @@ def CollectionInsert(coll) :
    coll_map = {"Collection Refr":"inum","Collection Date":"date","Coll. Amt" :"amt","Bill No":"bill_id"}
    coll = coll.rename(columns=coll_map)
    coll = coll.dropna(subset="inum")
-   coll["date"] = pd.to_datetime(coll.date).dt.date
+   coll["date"] = pd.to_datetime(coll.date,dayfirst=True).dt.date
    coll = coll[coll.Status != "CAN"]
    coll["mode"] = coll.Status.replace({"CSH":"Cash"} | { k : "Bank" for k in ["CHQ","NEFT","RTGS","UPI","IMPS"] })
    coll["party_id"] = None
@@ -137,7 +137,7 @@ def CollectionInsert(coll) :
    query_db( query )
 
 @refresh_outstanding
-def AdjustmentInsert(crnote) : 
+def AdjustmentInsert(crnote) :  
     crnote_maps = {"CR/DR No.":"inum","Adjusted/Collected/Cancelled Date":"date","Adjusted Amt":"adj_amt",
                 "Party Code":"party_id","Adjusted /Collected Bill No":"to_bill_id","Sales Ret Refr No.":"from_bill_id"}
     df = crnote.rename(columns=crnote_maps)

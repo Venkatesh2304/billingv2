@@ -193,7 +193,7 @@ class Session(requests.Session, ABC):
         # Logging setup
         self.logger = Logger(self.key, logging.DEBUG)
         if self.logging_enabled:
-            shutil.rmtree("logs/*",ignore_errors=True)
+            # shutil.rmtree("logs/*",ignore_errors=True)
             os.makedirs("logs/files", exist_ok=True)
             formatter = logging.Formatter("%(message)s")
             file_handler = logging.FileHandler(f"logs/{self.key}.html", mode="a")
@@ -258,5 +258,5 @@ class Session(requests.Session, ABC):
     def send(self, request, *args, **kwargs) -> Response:
         ## Middleware overriding the default send function to capture it in logs
         response = super().send(request, *args, **kwargs)
-        # self.logger.log_response(response)
+        self.logger.log_response(response)
         return response

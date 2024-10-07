@@ -1,4 +1,5 @@
 from collections import defaultdict
+import datetime
 import glob
 import json
 import re
@@ -8,7 +9,7 @@ import pandas as pd
 from app.models import *
 import warnings
 warnings.filterwarnings("ignore")
-
+pd.options.display.float_format = '{:.2f}'.format
 # for file in glob.glob("custom/curl/**/*.txt", recursive=True) : 
 #     save_request(file)
 
@@ -28,11 +29,39 @@ warnings.filterwarnings("ignore")
 
 
 # exit(0)
+from app.models import Orders,OrderProducts
+
+print( Orders.objects.filter(date  = datetime.date.today(),party__name="SRI MURUGAN STORES-ALWAR THOPE-D-D").all() )
+
+
 
 
 cur = connection.cursor()
-cur.execute("DROP VIEW IF EXISTS app_outstanding_raw")
+# cur.execute("DELETE from app_billing where date = '2024-10-07'")
+# cur.execute("DELETE from app_orders where date = '2024-10-07'")
+print( pd.read_sql(f"SELECT  * from app_orders where order_no ='91SMN00001D-P122620241007' ",connection)  )
+print( pd.read_sql(f"SELECT  * from app_orders where date ='2024-10-07' and party_id = 'P15667' ",connection)  )
+
+# cur.execute("DELETE from app_orderproducsts where date = '2024-10-07'")
+exit(0)
+
+a = pd.read_sql(f"SELECT inum,-balance as amt,(select name from app_party where code = party_id) from app_outstanding where balance <= -1",connection) 
+b = pd.read_excel("o.xlsx").rename(columns={"Bill Number":"inum","O/S Amount":"amt1"}).iloc[:-1][["inum","amt1"]]
+c = pd.merge(a,b,on="inum",how="outer").fillna(0)
+c["d"]  = c.amt - c.amt1
+print( c[c.d.abs() > 1] )
+
+
+print( pd.read_sql(f"SELECT * from app_billing order by start_time desc  limit 20",connection) )
+print( pd.read_sql(f"SELECT sum(amt) from app_collection where date >= '2024-04-01' and date < '2024-10-05'",connection) )
+
 print( pd.read_sql(f"SELECT sum(balance) from app_outstanding where balance <= -1",connection) )
+print( pd.read_sql(f"SELECT * from app_sales join app_party on party_id = code and date = '2024-10-05' ",connection).to_excel("a.xlsx") )
+print( pd.read_sql(f"SELECT * from app_collection where bill_id ='A45150'",connection) )
+print( pd.read_sql(f"SELECT * from app_party where name ='VARSHIKA MALIGAI'",connection) )
+print( pd.read_sql(f"SELECT * from app_collection join app_party on party_id = code where name ='MATHINA STORE-D-D-D-D' and date = '2024-05-10'",connection) )
+
+
 print( pd.read_sql(f"SELECT * from app_collection where bill_id = 'A41844' ",connection) )
 print( pd.read_sql(f"SELECT * from app_adjustment where to_bill_id = 'A01589' order by date desc limit 20 ",connection) )
 # cur.execute("DELETE from app_bank")

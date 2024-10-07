@@ -27,8 +27,8 @@ class Orders(models.Model) :
     date = 	models.DateField()
     type = models.TextField(max_length=15,choices=(("SH","Shikhar"),("SE","Salesman")),blank=True,null=True)
     billing = models.ForeignKey(Billing,on_delete=models.CASCADE,related_name="orders",null=True,blank=True)
-    party = models.ForeignKey("app.Party",on_delete=models.CASCADE,related_name="orders",null=True,blank=True)
-    beat = models.ForeignKey("app.Beat",on_delete=models.CASCADE,related_name="orders",null=True,blank=True)
+    party = models.ForeignKey("app.Party",on_delete=models.DO_NOTHING,related_name="orders",null=True,blank=True)
+    beat = models.ForeignKey("app.Beat",on_delete=models.DO_NOTHING,related_name="orders",null=True,blank=True)
     place_order = models.BooleanField(default=False,db_default=False)
     force_order = models.BooleanField(default=False,db_default=False)
     creditlock = models.BooleanField(default=False,db_default=False)
@@ -43,7 +43,7 @@ class Orders(models.Model) :
         return round( sum([ p.allocated * p.rate for p in self.products.all() ]) or 0  , 2 )
 
     def partial(self) : 
-        return bool( (self.products.filter(allocated = 0).count() and self.products.filter(allocated__gt = 0).count()) or self.products.filter(billed = True).count() )  
+        return bool( (self.products.filter(allocated = 0).count() and self.products.filter(allocated__gt = 0).count()) )  
 
     def __str__(self) -> str:
          return self.order_no
@@ -60,17 +60,18 @@ class OrdersProxy(Orders):
 class OrderProducts(models.Model) : 
     order = models.ForeignKey(Orders,on_delete=models.CASCADE,related_name="products")
     product = models.TextField(max_length=100)
+    batch = models.TextField(max_length=10,default="00000",db_default="00000")
     quantity =  models.IntegerField()
     allocated =  models.IntegerField()
     rate = models.FloatField()
     reason = models.TextField(max_length=50)
-    billed = models.BooleanField(default=False,db_default=False)
+    # billed = models.BooleanField(default=False,db_default=False)
     
     def __str__(self) -> str:
          return self.product
     
     class Meta:
-        unique_together = ('order', 'product')
+        unique_together = ('order', 'product','batch')
 
 class BillStatistics(models.Model) : 
     type = models.TextField(max_length=30)	

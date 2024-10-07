@@ -88,7 +88,7 @@
         animation: blinker 1s linear infinite;
         background: green;
     }
-  .hyperlink { font-size : 18px ; text-decoration: underline !important; color:blue !important; }
+  .hyperlink { font-size : 18px ; text-decoration: underline !important; color:blue !important; margin-right: 15px; }
 
 </style>
 
@@ -179,7 +179,9 @@
             {% comment %} <button onclick="window.open('/app/ordersproxy/?place_order__exact=0','_blank')">View Orders</button> {% endcomment %}
             
             <a href='/manual_print' target="_blank" class="hyperlink" style="margin-right: 15px;margin-left: 15px;" >Manual Printing</a>
-            <a href='/app/ordersproxy/?place_order__exact=0' target="_blank" class="hyperlink" >Rejected Orders</a>
+            <a href='/app/ordersproxy/?billing=last&place_order__exact=0' target="_blank" class="hyperlink" >Rejected Orders</a>
+            <a href='/app/ordersproxy/?billing=last&place_order__exact=1&creditlock__exact=0' target="_blank" class="hyperlink" >Pending Orders</a>
+            <a href='/party-sync' target="_blank" class="hyperlink" >Party Sync</a>
             
             <button type="submit" form="changelist-form" name="action_name" value="refresh" id="refresh" hidden>Refresh</button>
             {% if cl.formset %}

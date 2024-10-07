@@ -234,6 +234,10 @@ class IkeaDownloader(BaseIkea) :
       def stock_master(self) -> pd.DataFrame : 
           return self.download_dataframe("ikea/stock_master",skiprows=9)
       
+      def basepack(self,is_dataframe = False) : 
+          return self.report("ikea/basepack","","",is_dataframe = is_dataframe) 
+           
+        
 class Billing(IkeaDownloader) :
     today = datetime.date.today()
     order_date = datetime.date.today()
@@ -399,8 +403,9 @@ class Billing(IkeaDownloader) :
         orders = self.all_orders.groupby("on", as_index=False)
         orders = orders.filter(self.filter_orders_fn)
         self.filtered_orders = orders 
+        self.logger.log_dataframe(self.all_orders,"All orders : ")      
+        self.logger.log_dataframe(self.filtered_orders,"Filtered orders : ")      
 
-        # self.logger.log_dataframe(orders,"Filtered orders : ")      
         # billwise_lines_count = orders.groupby("on")["cq"].count().to_dict()
         # self.logger.info(f"Bill Wise Line Count : {billwise_lines_count}") #Need to Prettify
 

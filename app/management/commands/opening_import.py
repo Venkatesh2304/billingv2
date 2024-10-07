@@ -8,8 +8,12 @@ import app.models as models
 
 i = Billing()
 # i.crnote(fr)
-i.collection(datetime.date(2024,9,25),datetime.date.today()).to_excel("a.xlsx")
+i.gstr_report(datetime.date.today(),datetime.date.today()).to_excel("a.xlsx")
+# FRONT RS 10
+sd
+i.outstanding(datetime.date.today()).to_excel("o.xlsx")
 dsf
+i.collection(datetime.date(2024,9,25),datetime.date.today()).to_excel("a.xlsx")
 i.outstanding(datetime.date.today()).to_excel("o.xlsx")
 
 
