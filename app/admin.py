@@ -286,7 +286,8 @@ def get_bill_statistics(request) -> list :
 
     today = (timezone.now()).date()
     sales_qs = models.Sales.objects.filter(date  = today,type = "sales")
-    today_stats = {"bill_count" : sales_qs.count() , "collection_count" : models.Collection.objects.filter(date  = today).count() }
+    today_stats = {"bill_count" : sales_qs.exclude(beat__contains = "WHOLE").count() , 
+                   "collection_count" : models.Collection.objects.filter(date  = today).count() }
 
     if today_stats["bill_count"] : 
        today_stats |= {"bills_start" : sales_qs.first().inum , "bills_end" : sales_qs.last().inum }
@@ -302,7 +303,8 @@ def get_bill_statistics(request) -> list :
     if last_stats is not None : 
         stats = {"LAST BILLS COUNT" : last_stats.bill_count or 0,"LAST COLLECTION COUNT" : last_stats.collection.count() ,  
                     "LAST BILLS" : f'{last_stats.start_bill_no or ""} - {last_stats.end_bill_no or ""}', 
-                    "LAST STATUS" : ["DID NOT START","SUCCESS","ONGOING","ERROR"][last_stats.status]}
+                    "LAST STATUS" : ["DID NOT START","SUCCESS","ONGOING","ERROR"][last_stats.status] , 
+                    "LAST TIME" : f'{last_stats.start_time.strftime("%H:%M:%S")}' }
     else : 
         stats = {"LAST BILLS COUNT" : 0 ,"LAST COLLECTION COUNT" : 0 , "LAST BILLS" : "-",  "LAST STATUS" : "-" }
     
@@ -379,7 +381,7 @@ class BaseOrderAdmin(ChangeOnlyAdminModel) :
         return format_html('<a href="tel:+91{}" target="_blank">{}</a>',phone,phone)
 
     def lines(self,obj) : 
-        return obj.products.filter(allocated = 0).count()
+        return len([ product for product in obj.products.all() if product.allocated != product.quantity])
     
 
 ## Billing Admin
@@ -450,10 +452,16 @@ class BillingAdmin(BaseOrderAdmin) :
 class OrdersAdmin(BaseOrderAdmin) :
    
     list_display_links = None
-    list_display =  ["partial","order","party","value","lines","beat","coll","OS","salesman","creditlock","delete","phone"] #"release","place_order", 
+    list_display =  ["partial","order","party","lines","value","OS","coll","salesman","beat","creditlock","delete","phone"] #"release","place_order", 
     ordering = ["place_order"]
-    actions = ["force_order",delete_selected]
+    actions = ["force_order","delete_orders"]
 
+    def lines(self, obj):
+        return format_html("<span style='font-weight:500 !important; font-size : 14px !important'> {} </span>",super().lines(obj))
+    
+    def value(self, obj):
+        return format_html("<span style='font-weight:500 !important;font-size : 14px !important'> {} </span>",super().value(obj))
+    
     class CustomFilter(admin.SimpleListFilter):
         title = 'filter'
         parameter_name = 'filter'
@@ -513,18 +521,13 @@ class OrdersAdmin(BaseOrderAdmin) :
         title = f"{title_prefix} @ {get_last_billing().start_time.strftime('%d %B %Y, %I:%M:%S %p')}"
         return super().changelist_view( request, extra_context={ "title" : title })
 
-    def has_delete_permission(self, request, obj=None):
-        return True
-
     @admin.action(description="Force Place Order & Release Lock")
     def force_order(self, request, queryset) : 
         queryset.update(place_order = True,force_order=True)
         queryset.filter(creditlock=True).update(release = True)
-
-    def delete_model(self, request, obj):
-        self.delete_queryset(request,models.Orders.objects.filter(order_no = obj.order_no))
-        
-    def delete_queryset(self, request, queryset):
+    
+    @admin.action(description="Delete Orders")
+    def delete_orders(self, request, queryset) : 
         queryset.update(delete = True)
 
 

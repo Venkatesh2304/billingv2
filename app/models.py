@@ -37,7 +37,7 @@ class Orders(models.Model) :
     # partial = models.BooleanField(default=False,db_default=False)
 
     def bill_value(self) : 
-        return round( sum([ p.quantity * p.rate for p in self.products.all() if (p.allocated == 0) ]) or 0  , 2 )
+        return round( sum([ (p.quantity - p.allocated) * p.rate for p in self.products.all() ])   , 2 )
 
     def allocated_value(self) : 
         return round( sum([ p.allocated * p.rate for p in self.products.all() ]) or 0  , 2 )
