@@ -362,7 +362,7 @@ class BaseOrderAdmin(ChangeOnlyAdminModel) :
     def value(self,obj) : 
         return obj.bill_value()
     
-    def bills(self,obj) :
+    def OS(self,obj) :
         today = datetime.date.today() 
         bills = [  f"{-round(bill.balance)}*{(today - bill.date).days}"
                  for bill in models.Outstanding.objects.filter(party = obj.party,beat = obj.beat.name,balance__lte = -1).all() ]
@@ -387,7 +387,7 @@ class BillingAdmin(BaseOrderAdmin) :
 
     change_list_template = "billing.html"
     list_display_links = ["party"]
-    list_display = ["release","party","value","beat","lines","coll","bills","salesman","type","phone","delete"] 
+    list_display = ["release","party","lines","value","OS","coll","salesman","beat","phone","delete","type"] 
     list_editable = ["release","delete"]
     ordering = ["-release","salesman"]
 
@@ -450,7 +450,7 @@ class BillingAdmin(BaseOrderAdmin) :
 class OrdersAdmin(BaseOrderAdmin) :
    
     list_display_links = None
-    list_display =  ["partial","order","party","value","lines","beat","coll","bills","salesman","creditlock","delete","phone"] #"release","place_order", 
+    list_display =  ["partial","order","party","value","lines","beat","coll","OS","salesman","creditlock","delete","phone"] #"release","place_order", 
     ordering = ["place_order"]
     actions = ["force_order",delete_selected]
 
