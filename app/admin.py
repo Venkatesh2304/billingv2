@@ -99,7 +99,7 @@ def sync_all_reports(billing = None,limit = None) :
         sync_ikea_report(billing.collection, CollectionInsert,models.Collection,{})
     
 billing_process_names = ["SYNC" , "PREVBILLS" , "RELEASELOCK" , "COLLECTION", "ORDER"  , "REPORTS" , 
-                          "DELIVERY" , "DOWNLOAD" , "PRINT" ]
+                          "DELIVERY" , "DOWNLOAD" , "PRINT" ][:-2]
     
 billing_lock = threading.Lock()
 
@@ -190,16 +190,29 @@ def run_billing_process(billing_log,params : dict) :
                         order.force_order = False
                         order.save()
 
-                for order in order_objects : 
+                for order in order_objects :                     
+                    print(order.party.name)
                     qs = models.Outstanding.objects.filter(party = order.party,beat = order.beat.name,balance__lte = -1)
                     today_bill_count = qs.filter(date = datetime.date.today()).count()
                     if (today_bill_count == 0) and (qs.count() == 1) : 
                         bill_value = order.bill_value()
-                        outstanding_value = -qs.first().balance
+                        outstanding_bill = qs.first()
+                        outstanding_value = -outstanding_bill.balance
+                        print(order.party.name , bill_value , outstanding_value)
                         if bill_value < 200 : continue
+                        
+                        # today = datetime.date.today() 
+                        # max_outstanding_day =  (today - outstanding_bill.date).days
+                        # max_collection_day = models.Collection.objects.filter(party = order.party , date = today).aggregate(date = Max("bill__date"))["date"]
+                        # max_collection_day = (today - max_collection_day).days if max_collection_day else 0 
+                                                 
+                        # if (max_collection_day > 21) or (max_outstanding_day >= 21): 
+                        #     continue 
+
                         if (bill_value <= 500) or (outstanding_value <= 500):
                             order.release = True 
                             order.save()
+                            print(order.party.name , " release" )
                 
 
             if process_name == "COLLECTION" : 
@@ -514,7 +527,7 @@ class OrdersAdmin(BaseOrderAdmin) :
         qs = super().get_queryset(request)
         if "/change" in request.path : return qs 
         qs = qs.exclude(beat__name__contains = "WHOLE")
-        return qs 
+        return qs.exclude(products__allocated = F("products__quantity"))
     
     def changelist_view(self, request, extra_context=None):   
         title_prefix = "Pending Values" if "place_order__exact=1" in request.get_full_path() else "Rejected Orders" 
@@ -529,7 +542,6 @@ class OrdersAdmin(BaseOrderAdmin) :
     @admin.action(description="Delete Orders")
     def delete_orders(self, request, queryset) : 
         queryset.update(delete = True)
-
 
 
 class BankStatementUploadForm(forms.Form):
@@ -732,9 +744,33 @@ class OutstandingAdmin(ReadOnlyModel,admin.ModelAdmin) :
         sync_all_reports(limit = 5*60)
         return super().changelist_view(request, (extra_context or {})| {"title" : "Outstanding Report"})
     
+# class SalesAdmin(ReadOnlyModel,admin.ModelAdmin) : 
+#     list_display = ["inum","party","beat","amt","date","OS","days"]
+#     ordering = ["date"]
+
+#     def OS(self,obj) : 
+#         bills = list(models.OutstandingRaw.objects.filter(party_id = obj.party_id,beat = obj.beat,date__lt = obj.date).values_list("inum",flat=True))
+#         bills = models.OutstandingRaw.objects.filter(inum__in = bills,date__lte = obj.date).values('inum').annotate(bal = -Sum("amt"),
+#                         date = (obj.date - Min("date"))).exclude(bal__lt = 1)
+        
+#         return "/".join([ f'{bill["bal"]}*{bill["date"].days}' for bill in bills ])
+
+#     def days(self,obj) : 
+#         return (models.OutstandingRaw.objects.filter(inum = obj.inum).aggregate(date = Max("date"))["date"] - obj.date).days
+    
+#     def coll(self,obj) : 
+#         bills = list(models.OutstandingRaw.objects.filter(party_id = obj.party_id,beat = obj.beat,date__lt = obj.date).values_list("inum",flat=True))
+#         coll = models.OutstandingRaw.objects.filter(inum__in = bills,date = obj.date).values('inum').annotate(bal = Sum("amt"))
+#         return "/".join([ f'{bill["bal"]}' for bill in coll ])
+
+#     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+#         party = "SRI MANONMANI STORE" #"Saravana Pazhamudir Cholai-F" #"SRI BALAJI SUPER MARKET-D" #"A V STORE-D"
+#         return super().get_queryset(request).filter(party_id = "P16048")
+
 admin_site.register(models.Outstanding,OutstandingAdmin)
 admin_site.register(models.Orders,BillingAdmin)
 admin_site.register(models.OrdersProxy,OrdersAdmin)
 admin_site.register(models.Bank,BankAdmin)
+# admin_site.register(models.Sales,SalesAdmin)
 
 

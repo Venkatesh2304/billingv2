@@ -214,6 +214,19 @@ class Outstanding(models.Model) :
             managed = False 
             verbose_name_plural = 'Outstanding'
             
+# class OutstandingRaw(models.Model) : 
+#       party = ForeignKey("app.Party",on_delete=models.CASCADE)
+#       inum = CharField(max_length=20,primary_key=True)
+#       amt = FloatField(blank=True,null=True)
+#       beat = models.TextField(max_length=40)
+#       date = DateField()
+      
+#       def __str__(self) -> str:
+#            return self.inum 
+      
+#       class Meta : 
+#             managed = False 
+
 ## GST & Einvoice Related Models
 
 # class Einv(models.Model) : 

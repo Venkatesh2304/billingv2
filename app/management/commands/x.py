@@ -34,14 +34,53 @@ from app.models import Orders,OrderProducts
 print( Orders.objects.filter(date  = datetime.date.today(),party__name="SRI MURUGAN STORES-ALWAR THOPE-D-D").all() )
 
 
-
-
 cur = connection.cursor()
+print( pd.read_sql(f"SELECT  * from app_outstandingraw where  inum = 'A09923' ",connection)  )
+print( pd.read_sql(f"SELECT  * from app_collection where  bill_id = 'A00141' ",connection)  )
+df = pd.read_sql(f"""select party_id as party ,inum,amt,Cast((days/7) as Integer)*7 as days from (SELECT party_id,inum , -amt as amt , date , 
+Cast ((
+    JulianDay((select max(date) from app_outstandingraw where inum=app_sales.inum)) - JulianDay(date)
+) As Integer) as days 
+from app_sales 
+where amt < -300 )
+where days !=0 """,connection)
+
+df = df[df.days < 30]
+df = pd.pivot_table(df,index="party",values=["inum"],columns=["days"],aggfunc={"inum":"count"}).fillna(0)
+df = df[ df.sum(axis=1) > 10 ]
+df = df.div( df.sum(axis=1) , axis= 0 ) 
+print( df.idxmax(axis=1).value_counts() )
+print( df[ df.max(axis=1) >= 0.5 ] )
+print( df[ df.max(axis=1) < 0.5 ] )
+
+
+
+print( df ) 
+exit(0)
+
+print(df)
+print( df.groupby("days").aggregate({"amt" : "sum","inum" : "count"}).sort_values(by="inum",ascending=False) )
+
+#and party_id = 'P15667'
+
+# exit(0)
+# cur.execute("DROP VIEW IF EXISTS app_outstandingraw")
+# cur.execute("""CREATE VIEW app_outstandingraw AS 
+# select * from (
+# SELECT party_id,inum,'2024-03-31' as date,amt,beat from app_openingbalance
+# union all
+# SELECT party_id,inum,date,amt,beat from app_sales where type = 'sales'
+# union all
+# SELECT party_id,bill_id as inum,date,amt,NULL as beat from app_collection
+# union all
+# SELECT party_id,to_bill_id as inum,date,adj_amt as amt,NULL as beat from app_adjustment ) 
+# """)
+
+
 # cur.execute("DELETE from app_billing where date = '2024-10-07'")
 # cur.execute("DELETE from app_orders where date = '2024-10-07'")
-print( pd.read_sql(f"SELECT  * from app_orders where order_no ='91SMN00001D-P122620241007' ",connection)  )
-print( pd.read_sql(f"SELECT  * from app_orders where date ='2024-10-07' and party_id = 'P15667' ",connection)  )
-
+# print( pd.read_sql(f"SELECT  * from app_orders where order_no ='91SMN00001D-P122620241007' ",connection)  )
+# print( pd.read_sql(f"SELECT  * from app_orders where date ='2024-10-07' and party_id = 'P15667' ",connection)  )
 # cur.execute("DELETE from app_orderproducsts where date = '2024-10-07'")
 exit(0)
 
