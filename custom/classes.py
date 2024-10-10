@@ -53,6 +53,7 @@ class BaseIkea(Session) :
           if "jsonObjWhereClause" in r.data :
                 r.data['jsonObjWhereClause'] =  curl_replace(  pat , replaces ,  r.data['jsonObjWhereClause'] )
                 if "jsonObjforheaders" in r.data  : del r.data['jsonObjforheaders']
+          print(r.data)
           durl = r.send(self).text
           if durl == "" : return None 
           res = self.download_file( durl , fname )
@@ -236,7 +237,15 @@ class IkeaDownloader(BaseIkea) :
       
       def basepack(self,is_dataframe = False) : 
           return self.report("ikea/basepack","","",is_dataframe = is_dataframe) 
-           
+      
+      def loading_sheet(self,bills = []) : 
+          two_days_before = datetime.date.today() - datetime.timedelta(days=2)
+          today = datetime.date.today() 
+          bytesio = self.report("ikea/loading_sheet",r'(":val12":"\').{10}(\'",":val13":"\').{10}(\'",":val14":").{0}' ,
+                                            (two_days_before.strftime("%d/%m/%Y") , today.strftime("%d/%m/%Y") , ",".join(bills) ),is_dataframe = False)
+          df = pd.read_excel(bytesio,dtype = "str")
+          return df
+          
         
 class Billing(IkeaDownloader) :
     today = datetime.date.today()
@@ -449,25 +458,25 @@ class Billing(IkeaDownloader) :
         data = {"deliveryProcessVOList": delivery.to_dict(orient="records"), "returnPickList": []}
         self.post("/rsunify/app/deliveryprocess/savebill",json=data).json()
 
-    def Download(self):
+    def Download(self,pdf=True,txt=True):
         if len(self.bills) == 0 : return
         get_bill_durl = lambda billfrom,billto,report_type : self.get(f"/rsunify/app/commonPdfRptContrl/pdfRptGeneration?strJsonParams=%7B%22billFrom%22%3A%22{billfrom}%22%2C%22billTo%22%3A%22{billto}%22%2C%22reportType%22%3A%22{report_type}%22%2C%22blhVatFlag%22%3A2%2C%22shade%22%3A1%2C%22pack%22%3A%22910%22%2C%22damages%22%3Anull%2C%22halfPage%22%3A0%2C%22bp_division%22%3A%22%22%2C%22salesMan%22%3A%22%22%2C%22party%22%3A%22%22%2C%22market%22%3A%22%22%2C%22planset%22%3A%22%22%2C%22fromDate%22%3A%22%22%2C%22toDate%22%3A%22%22%2C%22veh_Name%22%3A%22%22%2C%22printId%22%3A0%2C%22printerName%22%3A%22TVS+MSP+250+Star%22%2C%22Lable_position%22%3A2%2C%22billType%22%3A2%2C%22printOption%22%3A%220%22%2C%22RptClassName%22%3A%22BILL_PRINT_REPORT%22%2C%22reptName%22%3A%22billPrint%22%2C%22RptId%22%3A%22910%22%2C%22freeProduct%22%3A%22Default%22%2C%22shikharQrCode%22%3Anull%2C%22rptTypOpt%22%3A%22pdf%22%2C%22gstTypeVal%22%3A%221%22%2C%22billPrint_isPrint%22%3A0%2C%22units_only%22%3A%22Y%22%7D").text
      
         self.billfrom, self.billto = self.bills[0],  self.bills[-1]
-        self.download_file( get_bill_durl(self.billfrom,self.billto,"pdf") , "bill.pdf" )
-        self.download_file( get_bill_durl(self.billfrom,self.billto,"txt") , "bill.txt" )
+        if pdf : self.download_file( get_bill_durl(self.billfrom,self.billto,"pdf") , "bill.pdf" )
+        if txt: self.download_file( get_bill_durl(self.billfrom,self.billto,"txt") , "bill.txt" )
         
-    def Printbill(self, print_type={"original": 0, "duplicate": 0}):
+    def Printbill(self, print_files = ["bill.pdf","bill.txt"]):
         if len(self.bills) == 0 : return
-        secondarybills('bill.txt', 'bill.docx')
+        if "bill.docx" in print_files : secondarybills('bill.txt', 'bill.docx')
         try:
             import win32api
-            for i in range(0, print_type["duplicate"]):
-                win32api.ShellExecute(0, 'print', 'bill.docx', None, '.', 0)
-            for i in range(0, print_type["original"]):
-                win32api.ShellExecute(0, 'print', "bill.pdf", None, '.', 0)
+            for print_file in print_files : 
+                win32api.ShellExecute(0, 'print', print_file , None, '.', 0)
+            return True
         except Exception as e:
             print("Win32 Failed . Printing Failed")
+            return False
 
 
 ## Needs to checked 

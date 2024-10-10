@@ -28,7 +28,7 @@ class Orders(models.Model) :
     type = models.TextField(max_length=15,choices=(("SH","Shikhar"),("SE","Salesman")),blank=True,null=True)
     billing = models.ForeignKey(Billing,on_delete=models.CASCADE,related_name="orders",null=True,blank=True)
     party = models.ForeignKey("app.Party",on_delete=models.DO_NOTHING,related_name="orders",null=True,blank=True)
-    beat = models.ForeignKey("app.Beat",on_delete=models.DO_NOTHING,related_name="orders",null=True,blank=True)
+    beat = models.ForeignKey("app.Beat",on_delete=models.DO_NOTHING,related_name="orders",null=True,blank=True,db_constraint=False,db_index=False)
     place_order = models.BooleanField(default=False,db_default=False)
     force_order = models.BooleanField(default=False,db_default=False)
     creditlock = models.BooleanField(default=False,db_default=False)
@@ -82,7 +82,8 @@ class ProcessStatus(models.Model) :
     status = models.IntegerField(default=0)
     process = models.TextField(max_length=30)	
     time = models.FloatField(null=True,blank=True) 
-    
+
+
 
 ## Models For Accounting
 ## Abstract models
@@ -200,6 +201,11 @@ class Beat(models.Model) :
 
 # class BeatMapping(models.Model) :  pass
 
+class Print(models.Model) : 
+    bill = models.OneToOneField("app.Sales",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING,primary_key=True)
+    time = models.DateTimeField(null=True,blank=True)
+    type = models.TextField(max_length=20,choices=(("first_copy","First Copy"),("loading_sheet","Loading Sheet")),null=True,blank=True)
+     
 class Outstanding(models.Model) : 
       party = ForeignKey("app.Party",on_delete=models.CASCADE)
       inum = CharField(max_length=20,primary_key=True)
@@ -213,7 +219,7 @@ class Outstanding(models.Model) :
       class Meta : 
             managed = False 
             verbose_name_plural = 'Outstanding'
-            
+
 # class OutstandingRaw(models.Model) : 
 #       party = ForeignKey("app.Party",on_delete=models.CASCADE)
 #       inum = CharField(max_length=20,primary_key=True)
@@ -265,7 +271,21 @@ class BankCollection(models.Model) :
       coll_code = models.TextField(max_length=30,null=True,blank=True)
       class Meta:
           unique_together = ('bill', 'cheque')
-      
+    
+class SalesmanCollection(models.Model) : 
+    id = models.CharField(max_length=25,primary_key=True)
+    date = models.DateField()
+    amt = models.IntegerField()
+    type = models.TextField(max_length=15,choices=(("cheque","Cheque"),("neft","NEFT")),null=True)
+    salesman = models.CharField(max_length=25,null=True,blank=True)
+    time = models.DateTimeField(null=True)
+
+class SalesmanCollectionBill(models.Model) : 
+    id = models.CharField(max_length=25,primary_key=True)
+    chq = ForeignKey("app.SalesmanCollection",on_delete=models.CASCADE,related_name="bills")
+    inum = ForeignKey("app.Sales",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING)
+    amt = models.IntegerField()    
+
 class Sync(models.Model):
     process = models.CharField(max_length=20,primary_key=True)
     time = models.DateTimeField()

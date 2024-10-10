@@ -16,6 +16,8 @@ def sales_insert(sales_reg,sales_gst,sales_type,permanent) :
     disc["type"] = disc["sub_type"].replace({"schdisc":"stpr","pecom":"stpr"})
     disc = disc.rename(columns={"inum":"bill_id"})
     both_insert("sales",sales_reg[ Sales.columns + ["tcs"] ],sales_gst,"bill")
+    print_table = sales_reg[["inum"]].rename(columns={"inum":"bill_id"})
+    bulk_raw_insert("print",print_table,ignore=True)
     if permanent : bulk_raw_insert("discount",disc)
 
 # delete_sales('sales')

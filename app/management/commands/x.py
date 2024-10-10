@@ -35,6 +35,18 @@ print( Orders.objects.filter(date  = datetime.date.today(),party__name="SRI MURU
 
 
 cur = connection.cursor()
+
+
+date = str(datetime.date.today()) 
+day = datetime.datetime.strptime(date,"%Y-%m-%d").strftime("%A").lower()
+
+print( pd.read_sql(f"SELECT  * from app_beat where salesman_name like '%AVINAS%' and days like '%wed%' ",connection)  )
+# print( pd.read_sql(f"SELECT  * from app_sales join app_party on code = party_id where beat = 'D-KATTUR 4S' and name like 'BHA%' ",connection)  )
+
+exit(0)
+
+
+
 print( pd.read_sql(f"SELECT  * from app_outstandingraw where  inum = 'A09923' ",connection)  )
 print( pd.read_sql(f"SELECT  * from app_collection where  bill_id = 'A00141' ",connection)  )
 df = pd.read_sql(f"""select party_id as party ,inum,amt,Cast((days/7) as Integer)*7 as days from (SELECT party_id,inum , -amt as amt , date , 

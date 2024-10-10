@@ -10,9 +10,10 @@ from threading import Thread
 import threading
 import time
 import traceback
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Type
 from django import forms
 from django.contrib import admin
+from django.contrib.admin.views.main import ChangeList
 from django.db.models.query import QuerySet
 from django.http import HttpResponse
 from django.http.request import HttpRequest
@@ -36,7 +37,9 @@ from django.urls import path
 from django.contrib import messages
 import dal.autocomplete
 from django.contrib.admin.actions import delete_selected
-
+from pytz import timezone
+from custom.Session import client
+import app.loading_sheet as loading_sheet
 
 def user_permission(s,*a,**kw) : 
     if a and False : return False #or "add" in a[0] "change" in a[0] or ("add" in a[0] ) 
@@ -85,7 +88,8 @@ def sync_ikea_report(download_function,insert_function,model_class,kwargs) :
     models.Sync.objects.update_or_create( process = model_class.__name__ , defaults={"time" : datetime.datetime.now()})
     print( "Synced :", model_class.__name__ )
     df = download_function(last_updated_date,datetime.date.today())
-    return insert_function(df,**kwargs )
+    model_class.objects.filter(date__gte = last_updated_date).delete()
+    return insert_function(df,**kwargs)
 
 def sync_all_reports(billing = None,limit = None) :
     last_sync = check_all_last_sync(limit)
@@ -97,15 +101,31 @@ def sync_all_reports(billing = None,limit = None) :
         sync_ikea_report(billing.crnote, AdjustmentInsert,models.Adjustment,{})
     if not last_sync.collection : 
         sync_ikea_report(billing.collection, CollectionInsert,models.Collection,{})
-    
+
+def update_salesman_collection() : 
+    max_time = models.SalesmanCollection.objects.aggregate(time = Max("time"))["time"]
+    if max_time : max_time = max_time.astimezone(timezone("UTC"))
+    db =  client["test"]["colls"]
+    if max_time : rows = db.find({"time" : { "$gt" :  max_time }}) 
+    else : rows = db.find() 
+    for row in rows : 
+        chq_id = str(row["_id"])
+        row["time"] = row["time"] + datetime.timedelta(hours=5,minutes=30)
+        models.SalesmanCollection.objects.get_or_create(id = chq_id , defaults = {"amt" :row["amount"], "date" :row["date"] , "time" : row["time"] , 
+                                                                                    "salesman": row["user"] , "type" : row["type"]})
+        for bill in row["bills"] : 
+            models.SalesmanCollectionBill.objects.get_or_create(id = str(bill["_id"]) , defaults = 
+                                                        {"inum_id" : bill["bill_no"] , "amt" :bill["amount"],  "chq_id" : chq_id})
+                    
+
+
 billing_process_names = ["SYNC" , "PREVBILLS" , "RELEASELOCK" , "COLLECTION", "ORDER"  , "REPORTS" , 
                           "DELIVERY" , "DOWNLOAD" , "PRINT" ][:-2]
-    
 billing_lock = threading.Lock()
 
 def run_billing_process(billing_log,params : dict) :
     
-    today = timezone.now().date()
+    today =datetime.date.today()
     last_billing = models.Billing.objects.filter(start_time__gte = today).order_by("-start_time")
     orders = models.Orders.objects.filter(billing = last_billing[1]) if last_billing.count() > 1 else models.Orders.objects.none()
 
@@ -201,19 +221,18 @@ def run_billing_process(billing_log,params : dict) :
                         print(order.party.name , bill_value , outstanding_value)
                         if bill_value < 200 : continue
                         
-                        # today = datetime.date.today() 
-                        # max_outstanding_day =  (today - outstanding_bill.date).days
-                        # max_collection_day = models.Collection.objects.filter(party = order.party , date = today).aggregate(date = Max("bill__date"))["date"]
-                        # max_collection_day = (today - max_collection_day).days if max_collection_day else 0 
-                                                 
-                        # if (max_collection_day > 21) or (max_outstanding_day >= 21): 
-                        #     continue 
+                        max_outstanding_day =  (today - outstanding_bill.date).days
+                        max_collection_day = models.Collection.objects.filter(party = order.party , date = today).aggregate(date = Max("bill__date"))["date"]
+                        max_collection_day = (today - max_collection_day).days if max_collection_day else 0   
+                        if (max_collection_day > 21) or (max_outstanding_day >= 21): 
+                            continue 
 
                         if (bill_value <= 500) or (outstanding_value <= 500):
                             order.release = True 
                             order.save()
                             print(order.party.name , " release" )
                 
+                update_salesman_collection()
 
             if process_name == "COLLECTION" : 
                
@@ -297,7 +316,7 @@ def get_bill_statistics(request) -> list :
         def get_queryset(self, request) :
             return models.BillStatistics.objects.exclude( type__contains = "LAST" ).reverse()
 
-    today = (timezone.now()).date()
+    today = datetime.date.today()
     sales_qs = models.Sales.objects.filter(date  = today,type = "sales")
     today_stats = {"bill_count" : sales_qs.exclude(beat__contains = "WHOLE").count() , 
                    "collection_count" : models.Collection.objects.filter(date  = today).count() }
@@ -402,11 +421,20 @@ class BillingAdmin(BaseOrderAdmin) :
 
     change_list_template = "billing.html"
     list_display_links = ["party"]
-    list_display = ["release","party","lines","value","OS","coll","salesman","beat","phone","delete","type"] 
+    list_display = ["release","party","lines","value","OS","coll","salesman","beat","phone","delete","cheque"] 
     list_editable = ["release","delete"]
     ordering = ["-release","salesman"]
 
-
+    def cheque(self,obj) : 
+        qs = models.SalesmanCollection.objects.filter(time__gte = datetime.date.today()).filter(bills__inum__party = obj.party)
+        colls = qs.all()
+        if len(colls) : 
+            ids = ",".join([ coll.id for coll in colls ])
+            value = sum([ coll.amt for coll in colls ])
+            return format_html("<a href='/app/salesmancollection/?id__in={}' target='_blank'>{}</a>",ids,value) 
+        else : 
+            return ""
+        
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         if (not hasattr(request,"filter_queryset")) or  (not request.filter_queryset) : return qs 
@@ -487,7 +515,7 @@ class OrdersAdmin(BaseOrderAdmin) :
             )
 
         def queryset(self, request, queryset):
-            today = timezone.now().date()
+            today =datetime.date.today()
             if self.value() == 'less_than_200':
                 return queryset.annotate(bill_value_field = Sum(F('products__quantity') * F('products__rate'))).filter(
                         bill_value_field__lt = 200).order_by("bill_value_field")
@@ -527,7 +555,7 @@ class OrdersAdmin(BaseOrderAdmin) :
         qs = super().get_queryset(request)
         if "/change" in request.path : return qs 
         qs = qs.exclude(beat__name__contains = "WHOLE")
-        return qs.exclude(products__allocated = F("products__quantity"))
+        return qs.exclude(products__allocated = F("products__quantity")).distinct()
     
     def changelist_view(self, request, extra_context=None):   
         title_prefix = "Pending Values" if "place_order__exact=1" in request.get_full_path() else "Rejected Orders" 
@@ -717,7 +745,7 @@ class OutstandingAdmin(ReadOnlyModel,admin.ModelAdmin) :
             )
 
         def queryset(self, request, queryset):
-            today = timezone.now().date()
+            today =datetime.date.today()
             if self.value() == '14_days':
                 return queryset.filter(date=today - datetime.timedelta(days=14))
             elif self.value() == '21_days':
@@ -743,7 +771,143 @@ class OutstandingAdmin(ReadOnlyModel,admin.ModelAdmin) :
         # if all(check_all_last_sync(limit= 5*60)) :     
         sync_all_reports(limit = 5*60)
         return super().changelist_view(request, (extra_context or {})| {"title" : "Outstanding Report"})
+
+
+class SalesCollectionBillInline(ReadOnlyModel,admin.TabularInline) : 
+    model = models.SalesmanCollectionBill
+    verbose_name_plural = "bills"
+    list_display = ["inum","amt"]
+ 
+class SalesCollectionAdmin(ReadOnlyModel,admin.ModelAdmin) :
+
+    list_display = ["party","cheque_date","amt","salesman","time"]
+    list_filter = ["time","salesman"]
+    ordering = ["salesman"]
+    inlines = [SalesCollectionBillInline]
     
+    def party(self,obj) : 
+        bill = obj.bills.first()
+        return bill.inum.party.name if bill else "-"
+    
+    def cheque_date(self,obj) : 
+        return obj.date 
+    
+    def has_delete_permission(self, request, obj=None):
+        return True
+   
+    def get_changelist(self, request: HttpRequest, **kwargs: Any) -> Type[ChangeList]:
+        update_salesman_collection()
+        return super().get_changelist(request, **kwargs)
+
+class PrintAdmin(ChangeOnlyAdminModel) :
+    list_display = ["bill","party","salesman","type","time"]
+    ordering = ["bill"]
+    actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet"]
+
+    def salesman(self,obj) :
+        return models.Beat.objects.filter(name = obj.bill.beat).first().salesman_name
+
+    def group_consecutive_bills(self,bills):
+
+        def extract_serial(bill_number):
+            match = re.search(r'(\D+)(\d{5})$', bill_number)
+            if match:
+                return match.group(1), int(match.group(2))  # Return prefix and serial number as a tuple
+            return None, None
+
+        sorted_bills = sorted(bills, key=lambda x: extract_serial(x))
+
+        groups = []
+        current_group = []
+        prev_prefix, prev_serial = None, None
+
+        for bill in sorted_bills:
+            prefix, serial = extract_serial(bill)
+            if not prefix:
+                continue
+
+            if prev_prefix == prefix and prev_serial is not None and serial == prev_serial + 1:
+                current_group.append(bill)
+            else:
+                if current_group:
+                    groups.append(current_group)
+                current_group = [bill]
+
+            prev_prefix, prev_serial = prefix, serial
+
+        if current_group:
+            groups.append(current_group)
+
+        return groups
+
+    def print_bills(self,request,billing: Billing,queryset,type) : 
+        groups = self.group_consecutive_bills([ bill.bill_id for bill in queryset ])
+        for group in groups : 
+            billing.bills = group 
+            if type == "first_copy" : billing.Download(pdf = True,txt = False)
+            if type == "second_copy" : billing.Download(pdf = False,txt = True)
+            if type == "loading_sheet" :
+                loading_sheet.create_pdf(billing.loading_sheet(group) , header = False)
+            if type == "loading_sheet_salesman" :
+                beats =  list(queryset.values_list("bill__beat",flat=True))
+                salesmans = list(models.Beat.objects.filter(name__in = beats).values_list("salesman_name",flat=True).distinct())
+                salesman =  salesmans[0] if len(salesmans) == 1 else ""
+                loading_sheet.create_pdf(billing.loading_sheet(group) , header = True,salesman=salesman)
+                
+
+            fname_map = {"first_copy" : "bill.pdf","second_copy" : "bill.docx",
+                           "loading_sheet_salesman":"loading.pdf","loading_sheet":"loading.pdf"}
+            status = billing.Printbill(print_files = [ fname_map[type] , ])
+            status = True  #warning:
+
+            if status : 
+                if type == "first_copy" : queryset.update(type = "first_copy", time = datetime.datetime.now()) 
+                if type == "loading_sheet_salesman" : queryset.update(type = "loading_sheet", time = datetime.datetime.now()) 
+
+            if status :
+                messages.success(request,f"Succesfully printed {type.upper()} : {group[0]} - {group[-1]}")
+            else : 
+                messages.error(request,f"Bills failed to print {type.upper()} : {group[0]} - {group[-1]}")
+
+    def base_print_action(self, request, qs , type ) :
+        i = Billing()
+        type = defaultdict(lambda : False,type)
+        for print_type,is_true in type.items() : 
+            if is_true : 
+                if print_type in ["first_copy","loading_sheet_salesman"] : 
+                   if qs.filter(time__isnull = False).count() : 
+                       messages.warning(request,f"Bills are already printed for {print_type.upper()}")
+
+                   self.print_bills(request, i , qs.filter(time__isnull = True) , type = print_type)
+                else : 
+                   self.print_bills(request, i , qs , type = print_type)
+                 
+    @admin.action(description="Both Copy")
+    def both_copy(self,request,queryset) : 
+        self.base_print_action(request,queryset,{"first_copy" : True,"second_copy" : True})
+    
+    @admin.action(description="First Copy")
+    def first_copy(self,request,queryset) : 
+        self.base_print_action(request,queryset,{"first_copy" : True})
+
+    @admin.action(description="Second Copy")
+    def second_copy(self,request,queryset) : 
+        self.base_print_action(request,queryset,{"second_copy" : True})
+
+    @admin.action(description="Salesman Loading Sheet")
+    def loading_sheet_salesman(self,request,queryset) : 
+        self.base_print_action(request,queryset,{"loading_sheet_salesman" : True})
+
+    @admin.action(description="Plain Loading Sheet")
+    def loading_sheet(self,request,queryset) : 
+        self.base_print_action(request,queryset,{"loading_sheet" : True})
+
+    def party(self,obj) : 
+        return obj.bill.party.name
+    
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        return super().get_queryset(request)#.filter(bill__date = datetime.date.today())
+
 # class SalesAdmin(ReadOnlyModel,admin.ModelAdmin) : 
 #     list_display = ["inum","party","beat","amt","date","OS","days"]
 #     ordering = ["date"]
@@ -771,6 +935,8 @@ admin_site.register(models.Outstanding,OutstandingAdmin)
 admin_site.register(models.Orders,BillingAdmin)
 admin_site.register(models.OrdersProxy,OrdersAdmin)
 admin_site.register(models.Bank,BankAdmin)
+admin_site.register(models.SalesmanCollection,SalesCollectionAdmin)
+admin_site.register(models.Print,PrintAdmin)
 # admin_site.register(models.Sales,SalesAdmin)
 
 

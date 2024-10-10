@@ -7,8 +7,21 @@ from app.sales_import import CollectionInsert, PartyInsert
 import app.models as models
 
 i = Billing()
+df = i.loading_sheet([])
+df.to_excel("a.xlsx",index=False)
+df["MRP"] = df["MRP"].str.split(".").str[0]
+df["LC"] = df["Total LC.Units"].str.split(".").str[0]
+df["Units"] = df["Total LC.Units"].str.split(".").str[1]
+df = df.rename(columns = {"Total FC" : "FC","Total Gross Sales" : "Gross Value"})
+print( df ) #,"Pack Size"
+df.to_html("a.html",columns=["Product Name","MRP","LC","Units","FC","UPC","Gross Value"],
+           border=False,index=False,header=True,justify="left",na_rep="",col_space=30)
+# with open("a.html")
+print( df )
+
+
 # i.crnote(fr)
-i.gstr_report(datetime.date.today(),datetime.date.today()).to_excel("a.xlsx")
+#i.gstr_report(datetime.date.today(),datetime.date.today()).to_excel("a.xlsx")
 # FRONT RS 10
 sd
 i.outstanding(datetime.date.today()).to_excel("o.xlsx")
