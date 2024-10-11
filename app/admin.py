@@ -906,7 +906,7 @@ class PrintAdmin(ChangeOnlyAdminModel) :
         return obj.bill.party.name
     
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
-        return super().get_queryset(request)#.filter(bill__date = datetime.date.today())
+        return super().get_queryset(request).filter(bill__date = datetime.date.today())
 
 # class SalesAdmin(ReadOnlyModel,admin.ModelAdmin) : 
 #     list_display = ["inum","party","beat","amt","date","OS","days"]
