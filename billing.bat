@@ -1,5 +1,5 @@
 @echo on
 call .venv\Scripts\activate
-start http://127.0.0.1:8000/app/orders/
+start http://0.0.0.0:8000/app/orders/
 python3 manage.py runserver
 pause 
