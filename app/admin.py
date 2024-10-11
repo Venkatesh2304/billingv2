@@ -161,7 +161,8 @@ def run_billing_process(billing_log,params : dict) :
                                   billing.Delivery , billing.Download , billing.Printbill ]
                             
     billing_process =  dict(zip(billing_process_names,billing_process_functions)) 
-     
+    order_objects = None 
+
     for process_name,process in billing_process.items() : 
         obj = models.ProcessStatus.objects.get(billing=billing_log,process=process_name)
         obj.status = 2
@@ -210,6 +211,14 @@ def run_billing_process(billing_log,params : dict) :
                         order.force_order = False
                         order.save()
 
+                update_salesman_collection()
+
+            if process_name == "COLLECTION" : 
+               
+               models.PushedCollection.objects.bulk_create([ models.PushedCollection(
+                   billing = billing_log, party_code = pc) for pc in billing.pushed_collection_ids ])
+            
+            if process_name == "REPORTS" and (order_objects is not None) : 
                 for order in order_objects :                     
                     qs = models.Outstanding.objects.filter(party = order.party,beat = order.beat.name,balance__lte = -1)
                     today_bill_count = models.Sales.objects.filter(party = order.party,beat = order.beat.name,
@@ -232,14 +241,7 @@ def run_billing_process(billing_log,params : dict) :
                             order.release = True 
                             order.save()
                             print(order.party.name , " release" )
-                
-                update_salesman_collection()
-
-            if process_name == "COLLECTION" : 
-               
-               models.PushedCollection.objects.bulk_create([ models.PushedCollection(
-                   billing = billing_log, party_code = pc) for pc in billing.pushed_collection_ids ])
-            
+                    
             if process_name == "DELIVERY" and billing.bills : 
                 billing_log.start_bill_no = billing.bills[0]
                 billing_log.end_bill_no = billing.bills[-1]
