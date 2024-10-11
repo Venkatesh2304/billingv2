@@ -211,9 +211,10 @@ def run_billing_process(billing_log,params : dict) :
                         order.save()
 
                 for order in order_objects :                     
-                    print(order.party.name)
                     qs = models.Outstanding.objects.filter(party = order.party,beat = order.beat.name,balance__lte = -1)
-                    today_bill_count = qs.filter(date = datetime.date.today()).count()
+                    today_bill_count = models.Sales.objects.filter(party = order.party,beat = order.beat.name,
+                                                                   date = datetime.date.today()).count()
+                    print(order.party.name,today_bill_count,qs.count())
                     if (today_bill_count == 0) and (qs.count() == 1) : 
                         bill_value = order.bill_value()
                         outstanding_bill = qs.first()
