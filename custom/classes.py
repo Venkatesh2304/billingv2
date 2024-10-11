@@ -243,8 +243,9 @@ class IkeaDownloader(BaseIkea) :
           today = datetime.date.today() 
           bytesio = self.report("ikea/loading_sheet",r'(":val12":"\').{10}(\'",":val13":"\').{10}(\'",":val14":").{0}' ,
                                             (two_days_before.strftime("%d/%m/%Y") , today.strftime("%d/%m/%Y") , ",".join(bills) ),is_dataframe = False)
-          df = pd.read_excel(bytesio,dtype = "str")
-          return df
+          df1 = pd.read_excel(bytesio,dtype = "str",sheet_name="Loading Sheet")
+          df2 = pd.read_excel(bytesio,dtype = "str",sheet_name="Party Wise Sales Report")
+          return (df1,df2)
           
         
 class Billing(IkeaDownloader) :

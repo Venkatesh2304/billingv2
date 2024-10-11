@@ -193,7 +193,7 @@ class Beat(models.Model) :
      name = models.TextField(max_length=40)
      salesman_id = IntegerField()
      salesman_code = IntegerField()
-     salesman_name = IntegerField()
+     salesman_name = models.TextField(max_length=40)
      days = models.TextField(max_length=40)
      plg = models.TextField(max_length=15)
      def __str__(self) -> str:

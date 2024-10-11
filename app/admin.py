@@ -28,6 +28,7 @@ from django.contrib.admin.templatetags.admin_list import register , result_list
 from django.contrib.admin.templatetags.base import InclusionAdminNode
 from custom.Session import Logger  
 from custom.classes import Billing,IkeaDownloader
+from django.utils.safestring import mark_safe
 from django.utils import timezone
 from django.db.models import Max,F,Subquery,OuterRef,Q,Min,Sum,Count
 from django.contrib.admin import helpers, widgets
@@ -117,7 +118,6 @@ def update_salesman_collection() :
             models.SalesmanCollectionBill.objects.get_or_create(id = str(bill["_id"]) , defaults = 
                                                         {"inum_id" : bill["bill_no"] , "amt" :bill["amount"],  "chq_id" : chq_id})
                     
-
 
 billing_process_names = ["SYNC" , "PREVBILLS" , "RELEASELOCK" , "COLLECTION", "ORDER"  , "REPORTS" , 
                           "DELIVERY" , "DOWNLOAD" , "PRINT" ][:-2]
@@ -802,11 +802,39 @@ class SalesCollectionAdmin(ReadOnlyModel,admin.ModelAdmin) :
         update_salesman_collection()
         return super().get_changelist(request, **kwargs)
 
+
 class PrintAdmin(ChangeOnlyAdminModel) :
     list_display = ["bill","party","salesman","type","time"]
-    ordering = ["bill"]
+    ordering = ["type","-bill"]
     actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet"]
 
+    class AlreadyPrintedFilter(admin.SimpleListFilter):
+        title = 'Already Printed'
+        parameter_name = 'printed'
+
+        def lookups(self, request, model_admin):
+            return (("not_printed","Not Printed"),)
+
+        def queryset(self, request, queryset):
+            if self.value() == 'not_printed':
+                return queryset.filter(time__isnull=True)
+            return queryset
+
+    class SalesmanFilter(admin.SimpleListFilter):
+        title = 'Salesman'
+        parameter_name = 'salesman'
+
+        def lookups(self, request, model_admin):
+            salesmans = list(models.Beat.objects.all().values_list("salesman_name",flat=True).distinct())
+            return zip(salesmans,salesmans)
+
+        def queryset(self, request, queryset):
+            if self.value() is None : return queryset 
+            beats = list(models.Beat.objects.filter(salesman_name = self.value()).values_list("name",flat=True).distinct())
+            return queryset.filter(bill__beat__in = beats)
+        
+    list_filter = [AlreadyPrintedFilter,SalesmanFilter]
+    
     def salesman(self,obj) :
         return models.Beat.objects.filter(name = obj.bill.beat).first().salesman_name
 
@@ -867,17 +895,19 @@ class PrintAdmin(ChangeOnlyAdminModel) :
                 if type == "first_copy" : queryset.update(type = "first_copy", time = datetime.datetime.now()) 
                 if type == "loading_sheet_salesman" : queryset.update(type = "loading_sheet", time = datetime.datetime.now()) 
 
+            link = format_html('<a href="/static/{}" target="_blank">{}</a>',fname_map[type],type.upper())
+
             if status :
-                messages.success(request,f"Succesfully printed {type.upper()} : {group[0]} - {group[-1]}")
+                messages.success(request,mark_safe(f"Succesfully printed {link} : {group[0]} - {group[-1]}"))
             else : 
-                messages.error(request,f"Bills failed to print {type.upper()} : {group[0]} - {group[-1]}")
+                messages.error(request,mark_safe(f"Bills failed to print {link} : {group[0]} - {group[-1]}"))
 
     def base_print_action(self, request, qs , type ) :
         i = Billing()
         type = defaultdict(lambda : False,type)
         for print_type,is_true in type.items() : 
             if is_true : 
-                if print_type in ["first_copy","loading_sheet_salesman"] : 
+                if print_type in ["first_copy","loading_sheet_ssalesman"] : 
                    if qs.filter(time__isnull = False).count() : 
                        messages.warning(request,f"Bills are already printed for {print_type.upper()}")
 
