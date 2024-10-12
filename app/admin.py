@@ -872,7 +872,10 @@ class PrintAdmin(ChangeOnlyAdminModel) :
         return groups
 
     def print_bills(self,request,billing: Billing,queryset,type) : 
-        groups = self.group_consecutive_bills([ bill.bill_id for bill in queryset ])
+        if "loading_sheet" in type : 
+            groups = [[ bill.bill_id for bill in queryset ]]
+        else : 
+            groups = self.group_consecutive_bills([ bill.bill_id for bill in queryset ])
         for group in groups : 
             billing.bills = group 
             if type == "first_copy" : billing.Download(pdf = True,txt = False)
