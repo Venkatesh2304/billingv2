@@ -1,5 +1,6 @@
 from collections import defaultdict
 import datetime
+from functools import partial, update_wrapper
 from io import BytesIO
 import logging
 import multiprocessing
@@ -15,7 +16,7 @@ from django import forms
 from django.contrib import admin
 from django.contrib.admin.views.main import ChangeList
 from django.db.models.query import QuerySet
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseRedirect
 from django.http.request import HttpRequest
 from django.shortcuts import redirect, render
 from django.template.response import TemplateResponse
@@ -34,13 +35,14 @@ from django.db.models import Max,F,Subquery,OuterRef,Q,Min,Sum,Count
 from django.contrib.admin import helpers, widgets
 from collections import namedtuple
 from app.sales_import import AdjustmentInsert, CollectionInsert, SalesInsert
-from django.urls import path
+from django.urls import path, reverse
 from django.contrib import messages
 import dal.autocomplete
 from django.contrib.admin.actions import delete_selected
 from pytz import timezone
 from custom.Session import client
 import app.loading_sheet as loading_sheet
+from django.contrib.admin.utils import quote
 
 def user_permission(s,*a,**kw) : 
     if a and False : return False #or "add" in a[0] "change" in a[0] or ("add" in a[0] ) 
@@ -49,17 +51,46 @@ def user_permission(s,*a,**kw) :
 class AccessUser(object):
     has_module_perms = has_perm = __getattr__ = user_permission
 
-admin_site = admin.AdminSite(name='myadmin')
+class MyAdminSite(admin.AdminSite):
+    def get_app_list(self, request,app_label=None):
+        """
+        Return a sorted list of all the installed apps that have been registered
+        in this admin site, excluding certain models.
+        """
+        app_list = super().get_app_list(request,app_label)
+        for app in app_list:
+            to_be_display_models = []
+            for model_dictionary in app["models"] :
+                model = model_dictionary["model"]
+                model_admin = self._registry.get(model)
+                if isinstance(model_admin,CustomAdminModel) : 
+                    if (not model_admin.show_on_navbar) : continue 
+                    if len(model_admin.custom_admin_urls) :
+                        for admin_url_path in model_admin.custom_admin_urls : 
+                            model_dictionary_copy = model_dictionary.copy()
+                            model_dictionary_copy["admin_url"] = reverse("admin:" + admin_url_path.name)
+                            to_be_display_models.append(model_dictionary_copy)
+                    else : 
+                        to_be_display_models.append(model_dictionary)
+                
+                else : 
+                    to_be_display_models.append(model_dictionary)
+            app["models"] = to_be_display_models
+        return app_list
+    
+admin_site = MyAdminSite(name='myadmin')
 admin_site.has_permission = lambda r: setattr(r, 'user', AccessUser()) or True
 
+def bold(function) : 
+    def wrapper(*args,**kwargs) : 
+        return format_html("<b>{}</b>",function(*args,**kwargs))
+    update_wrapper(wrapper, function)
+    return wrapper
 
-# logger = Logger("main", logging.DEBUG)
-# os.makedirs("logs/files", exist_ok=True)
-# formatter = logging.Formatter("%(message)s")
-# file_handler = logging.FileHandler(f"logs/main.html", mode="a")
-# file_handler.setLevel(logging.DEBUG)
-# file_handler.setFormatter(formatter)
-# logger.addHandler(file_handler)
+def hyperlink(url,text,new_tab=True) :  
+    if new_tab :  return format_html("<a href='{}' target='_blank'>{}</a>",url, text)
+    else : return format_html("<a href='{}'>{}</a>",url, text)
+
 
 @register.tag(name="custom_result_list")
 def result_list_tag(parser, token):
@@ -370,15 +401,16 @@ def get_last_billing() :
                 last_billing = billing_qs[1]
     return last_billing
 
-class ChangeOnlyAdminModel(admin.ModelAdmin) : 
+
+class ChangeOnly() : 
+    def has_change_permission(self, request, obj=None):
+        return True    
     def has_add_permission(self, request,obj = None):
         return False
-    def has_change_permission(self, request, obj=None):
-        return True
     def has_delete_permission(self, request, obj=None):
         return False
-   
-class ReadOnlyModel() : 
+    
+class ReadOnly() : 
     def has_add_permission(self, request,obj = None):
         return False
     def has_change_permission(self, request, obj=None):
@@ -386,16 +418,42 @@ class ReadOnlyModel() :
     def has_delete_permission(self, request, obj=None):
         return False
 
-class OrderProductsInline(ReadOnlyModel,admin.TabularInline) : 
-    model = models.OrderProducts
-    show_change_link = True
-    verbose_name_plural = "products"
+class CustomAdminModel(admin.ModelAdmin) : 
+    show_on_navbar = True
 
-class BaseOrderAdmin(ChangeOnlyAdminModel) :   
+    def __init__(self, model, admin_site):
+        super().__init__(model, admin_site)
+        self.custom_admin_urls = []
+
+    def add_custom_url(self,url,function,name) : 
+        info = self.opts.app_label, self.opts.model_name
+        viewname = f"{'%s_%s_' % info}{name}"
+        self.custom_admin_urls.append(path(url, self.admin_site.admin_view(function), name=viewname))
+
+    def get_urls(self):
+        urls = super().get_urls()
+        return self.custom_admin_urls + urls
+     
+    def save_changelist(self,request) :
+        """Safe Work Around to Only save changelist forms (even works with actions, it doesnt trigger actions)""" 
+        original_post = request.POST.copy()
+        edited_post = request.POST.copy()
+        edited_post["_save"] = "Save"
+        request._set_post(edited_post)
+        super().changelist_view( request )
+        request._set_post(original_post)
+
+class BaseOrderAdmin(CustomAdminModel,ChangeOnly) :   
+
+    class OrderProductsInline(ReadOnly,admin.TabularInline) : 
+        model = models.OrderProducts
+        show_change_link = True
+        verbose_name_plural = "products"
+
     inlines = [OrderProductsInline]
-    readonly_fields = ("order_no",'date','party','type','salesman','beat',"billing",'release','creditlock','delete','place_order','force_order')
-    actions = None
+    readonly_fields = ("order_no",'date','party','type','salesman','beat','billing','release','creditlock','delete','place_order','force_order')
 
+    @bold 
     def value(self,obj) : 
         return obj.bill_value()
     
@@ -413,11 +471,37 @@ class BaseOrderAdmin(ChangeOnlyAdminModel) :
     
     def phone(self,obj) : 
         phone = obj.party.phone or "-"
-        return format_html('<a href="tel:+91{}" target="_blank">{}</a>',phone,phone)
+        return hyperlink(url = "tel:+91" + phone, text = phone)
 
+    @bold
     def lines(self,obj) : 
         return len([ product for product in obj.products.all() if product.allocated != product.quantity])
     
+    def partial(self,obj) :
+        return obj.partial()
+    partial.boolean = True  
+
+    def cheque(self,obj) : 
+        qs = models.SalesmanCollection.objects.filter(time__gte = datetime.date.today()).filter(bills__inum__party = obj.party)
+        colls = qs.all()
+        if len(colls) : 
+            ids = ",".join([ coll.id for coll in colls ])
+            value = sum([ coll.amt for coll in colls ])
+            return hyperlink(f'/app/salesmancollection/?id__in={ids}',value) 
+        else : 
+            return ""
+
+    @admin.action(description="Force Place Order & Release Lock")
+    def force_order(self, request, queryset) : 
+        queryset.update(place_order = True,force_order=True)
+        queryset.filter(creditlock=True).update(release = True)
+    
+    @admin.action(description="Delete Orders")
+    def delete_orders(self, request, queryset) : 
+        queryset.update(delete = True)
+
+class MyActionForm(forms.Form):
+        custom_field = forms.CharField(max_length=100, label='Enter Value')
 
 ## Billing Admin
 class BillingAdmin(BaseOrderAdmin) :   
@@ -428,19 +512,31 @@ class BillingAdmin(BaseOrderAdmin) :
     list_editable = ["release","delete"]
     ordering = ["-release","salesman"]
 
-    def cheque(self,obj) : 
-        qs = models.SalesmanCollection.objects.filter(time__gte = datetime.date.today()).filter(bills__inum__party = obj.party)
-        colls = qs.all()
-        if len(colls) : 
-            ids = ",".join([ coll.id for coll in colls ])
-            value = sum([ coll.amt for coll in colls ])
-            return format_html("<a href='/app/salesmancollection/?id__in={}' target='_blank'>{}</a>",ids,value) 
-        else : 
-            return ""
-        
+    class CustomInputFilter(admin.SimpleListFilter):
+        title = 'Custom Filter'
+        parameter_name = 'custom_input'
+
+        def lookups(self, request, model_admin):
+            return [("a","a")]
+
+        def queryset(self, request, queryset):
+            value = self.value()  # Get the input value
+            if value:
+                return queryset.filter(custom_field__icontains=value)
+            return queryset
+
+        def choices(self, changelist):
+            # Create an input field
+            return [{
+                'selected': False,
+                'query_string': changelist.get_query_string({self.parameter_name: ''}),
+                'display': mark_safe('<input type="text" name="custom_input" />')
+            }]
+    
+    list_filter = (CustomInputFilter,"beat")
+
     def get_queryset(self, request):
         qs = super().get_queryset(request)
-        if (not hasattr(request,"filter_queryset")) or  (not request.filter_queryset) : return qs 
         qs = qs.filter(creditlock=True) 
         billing_qs = models.Billing.objects.all().order_by("-start_time")
         last_billing = billing_qs.first()      
@@ -451,13 +547,15 @@ class BillingAdmin(BaseOrderAdmin) :
             else : 
                 if billing_qs.count() > 1 : 
                     last_billing = billing_qs[1]
-        if last_billing is None : return qs.none() 
-        return qs.filter(billing = last_billing,place_order=True) #WARNING
+        if last_billing is None : 
+            return qs.none() 
+        return qs.filter(billing = last_billing,place_order=True) 
     
     def changelist_view(self, request, extra_context=None):   
         ## This attribute says get_queryset function whether to filter the creditlocks only for last billing (or) all billing
-        request.filter_queryset = False 
+
         today = datetime.date.today()
+        
         time_interval = int( request.POST.get("time_interval",10) )
         time_interval_milliseconds = time_interval * 1000 * 60
         next_action = "unknown"
@@ -465,13 +563,8 @@ class BillingAdmin(BaseOrderAdmin) :
         if request.method == "POST" :             
             action = request.POST.get("action_name")
 
-            if (action == "start") or (action == "quit"): 
-                original_post = request.POST.copy()
-                edited_post = request.POST.copy()
-                edited_post["_save"] = "Save"
-                request._set_post(edited_post)
-                super().changelist_view( request )
-                request._set_post(original_post)
+            if (action == "start") or (action == "quit"):                 
+                self.save_changelist(request)
 
             if action == "start" : 
                 start(request)
@@ -487,25 +580,40 @@ class BillingAdmin(BaseOrderAdmin) :
 
         tables = get_bill_statistics(request) 
         line_count = int(request.POST.get("line_count",100))
-        request.filter_queryset = True 
 
-        return super().changelist_view( request, extra_context={ "title" : "" ,"tables" : tables ,  
+        return super().changelist_view( request , extra_context={ "title" : "" ,"tables" : tables ,  
         "time_interval_milliseconds" : time_interval_milliseconds , "time_interval" : time_interval , 
-        "line_count" : line_count , "auto_action_type" : next_action  })
+        "line_count" : line_count , "auto_action_type" : next_action  } ) 
+
+
+   
 
 class OrdersAdmin(BaseOrderAdmin) :
-   
-    list_display_links = None
-    list_display =  ["partial","order","party","lines","value","OS","coll","salesman","beat","creditlock","delete","phone"] #"release","place_order", 
+    
+    list_display_links = ["order_no"]
+    list_display =  ["partial","order_no","party","lines","value","OS","coll","salesman","beat","creditlock","delete","phone"] 
     ordering = ["place_order"]
     actions = ["force_order","delete_orders"]
 
-    def lines(self, obj):
-        return format_html("<span style='font-weight:500 !important; font-size : 14px !important'> {} </span>",super().lines(obj))
-    
-    def value(self, obj):
-        return format_html("<span style='font-weight:500 !important;font-size : 14px !important'> {} </span>",super().value(obj))
-    
+    actions = ['custom_action']
+
+    def custom_action(self, request, queryset):
+        form = None
+        if 'apply' in request.POST:
+            form = MyActionForm(request.POST)
+            if form.is_valid():
+                # Perform action with input data
+                custom_value = form.cleaned_data['custom_field']
+                queryset.update(custom_field=custom_value)
+                self.message_user(request, "Action applied successfully!")
+                return HttpResponseRedirect(request.get_full_path())
+
+        if not form:
+            form = MyActionForm()
+
+        return render(request, 'admin/custom_action.html', {'form': form, 'queryset': queryset})
+    custom_action.short_description = 'Custom Action with Input'
+
     class CustomFilter(admin.SimpleListFilter):
         title = 'filter'
         parameter_name = 'filter'
@@ -546,14 +654,6 @@ class OrdersAdmin(BaseOrderAdmin) :
 
     list_filter = [CustomFilter,LastFilter]
 
-    def partial(self,obj) :
-        return obj.partial()
-    partial.boolean = True  
-
-    def order(self, obj):
-        url = f'/app/ordersproxy/{obj.order_no}/change/' 
-        return format_html('<a href="{}" target="_blank">{}</a>',url,obj.order_no)
-    
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         if "/change" in request.path : return qs 
@@ -565,16 +665,7 @@ class OrdersAdmin(BaseOrderAdmin) :
         title = f"{title_prefix} @ {get_last_billing().start_time.strftime('%d %B %Y, %I:%M:%S %p')}"
         return super().changelist_view( request, extra_context={ "title" : title })
 
-    @admin.action(description="Force Place Order & Release Lock")
-    def force_order(self, request, queryset) : 
-        queryset.update(place_order = True,force_order=True)
-        queryset.filter(creditlock=True).update(release = True)
-    
-    @admin.action(description="Delete Orders")
-    def delete_orders(self, request, queryset) : 
-        queryset.update(delete = True)
-
-
+   
 class BankStatementUploadForm(forms.Form):
     excel_file = forms.FileField()
 
@@ -598,7 +689,7 @@ class BankCollectionInline(admin.TabularInline) :
     class Media:
         js = ('admin/js/bank_inline.js',)
 
-class BankAdmin(ChangeOnlyAdminModel) : 
+class BankAdmin(CustomAdminModel,ChangeOnly) : 
 
     change_list_template = "bank.html"
     list_display = ["date","ref","desc","amt","saved","pushed"]
@@ -728,7 +819,7 @@ class BankAdmin(ChangeOnlyAdminModel) :
               super().save_model(request,bank_obj,form,change)    
         super().save_related(request,form,formsets, change)
     
-class OutstandingAdmin(ReadOnlyModel,admin.ModelAdmin) : 
+class OutstandingAdmin(CustomAdminModel,ReadOnly) : 
     change_list_template = "outstanding.html"
     list_display = ["inum","party","beat","balance","phone","days"]
     today = datetime.date.today()
@@ -776,12 +867,12 @@ class OutstandingAdmin(ReadOnlyModel,admin.ModelAdmin) :
         return super().changelist_view(request, (extra_context or {})| {"title" : "Outstanding Report"})
 
 
-class SalesCollectionBillInline(ReadOnlyModel,admin.TabularInline) : 
+class SalesCollectionBillInline(ReadOnly,admin.TabularInline) : 
     model = models.SalesmanCollectionBill
     verbose_name_plural = "bills"
     list_display = ["inum","amt"]
  
-class SalesCollectionAdmin(ReadOnlyModel,admin.ModelAdmin) :
+class SalesCollectionAdmin(CustomAdminModel,ReadOnly) :
 
     list_display = ["party","cheque_date","amt","salesman","time"]
     list_filter = ["time","salesman"]
@@ -802,8 +893,7 @@ class SalesCollectionAdmin(ReadOnlyModel,admin.ModelAdmin) :
         update_salesman_collection()
         return super().get_changelist(request, **kwargs)
 
-
-class PrintAdmin(ChangeOnlyAdminModel) :
+class PrintAdmin(CustomAdminModel,ReadOnly) :
     list_display = ["bill","party","salesman","type","time"]
     ordering = ["type","-bill"]
     actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet"]
@@ -941,6 +1031,7 @@ class PrintAdmin(ChangeOnlyAdminModel) :
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return super().get_queryset(request).filter(bill__date = datetime.date.today())
 
+
 # class SalesAdmin(ReadOnlyModel,admin.ModelAdmin) : 
 #     list_display = ["inum","party","beat","amt","date","OS","days"]
 #     ordering = ["date"]
@@ -970,6 +1061,6 @@ admin_site.register(models.OrdersProxy,OrdersAdmin)
 admin_site.register(models.Bank,BankAdmin)
 admin_site.register(models.SalesmanCollection,SalesCollectionAdmin)
 admin_site.register(models.Print,PrintAdmin)
-# admin_site.register(models.Sales,SalesAdmin)
+
 
 

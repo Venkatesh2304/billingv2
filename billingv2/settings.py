@@ -79,7 +79,6 @@ WSGI_APPLICATION = "billingv2.wsgi.application"
 
 
 STATICFILES_DIRS = [
-    BASE_DIR / "static",
     BASE_DIR ,
 ]
 # Database
