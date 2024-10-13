@@ -7,7 +7,7 @@ from django.db.models import Sum,F
 class Billing(models.Model) : 
     start_time = models.DateTimeField()
     end_time = models.DateTimeField(null=True,blank=True)
-    status = models.IntegerField()
+    status = models.IntegerField(choices=())
     error = models.TextField(max_length=100000,null=True,blank=True)
     start_bill_no = models.TextField(max_length=10,null=True,blank=True)
     end_bill_no = models.TextField(max_length=10,null=True,blank=True)

@@ -1,4 +1,5 @@
 from collections import defaultdict
+from collections import abc
 import datetime
 from functools import partial, update_wrapper
 from io import BytesIO
@@ -22,6 +23,7 @@ from django.shortcuts import redirect, render
 from django.template.response import TemplateResponse
 import numpy as np
 import pandas as pd
+from enum import Enum
 from app.common import both_insert, bulk_raw_insert, query_db
 import app.models as models 
 from django.utils.html import format_html
@@ -43,6 +45,8 @@ from pytz import timezone
 from custom.Session import client
 import app.loading_sheet as loading_sheet
 from django.contrib.admin.utils import quote
+from collections.abc import Iterable
+import abc
 
 def user_permission(s,*a,**kw) : 
     if a and False : return False #or "add" in a[0] "change" in a[0] or ("add" in a[0] ) 
@@ -51,35 +55,7 @@ def user_permission(s,*a,**kw) :
 class AccessUser(object):
     has_module_perms = has_perm = __getattr__ = user_permission
 
-class MyAdminSite(admin.AdminSite):
-    def get_app_list(self, request,app_label=None):
-        """
-        Return a sorted list of all the installed apps that have been registered
-        in this admin site, excluding certain models.
-        """
-        app_list = super().get_app_list(request,app_label)
-        for app in app_list:
-            to_be_display_models = []
-            for model_dictionary in app["models"] :
-                model = model_dictionary["model"]
-                model_admin = self._registry.get(model)
-                if isinstance(model_admin,CustomAdminModel) : 
-                    if (not model_admin.show_on_navbar) : continue 
-                    if len(model_admin.custom_admin_urls) :
-                        for admin_url_path in model_admin.custom_admin_urls : 
-                            model_dictionary_copy = model_dictionary.copy()
-                            model_dictionary_copy["admin_url"] = reverse("admin:" + admin_url_path.name)
-                            to_be_display_models.append(model_dictionary_copy)
-                    else : 
-                        to_be_display_models.append(model_dictionary)
-                
-                else : 
-                    to_be_display_models.append(model_dictionary)
-            app["models"] = to_be_display_models
-        return app_list
-    
-admin_site = MyAdminSite(name='myadmin')
-admin_site.has_permission = lambda r: setattr(r, 'user', AccessUser()) or True
+
 
 def bold(function) : 
     def wrapper(*args,**kwargs) : 
@@ -317,7 +293,6 @@ def start(request) :
 
 def get_bill_statistics(request) -> list : 
 
-    ## Billing Statistics Admin
     class ProcessStatusAdmin(admin.ModelAdmin):
         actions = None
         ordering = ("id",)
@@ -325,40 +300,37 @@ def get_bill_statistics(request) -> list :
         def get_queryset(self, request):
             qs = super().get_queryset(request)
             last_process = qs.last()
-            if last_process is None : return qs 
-            return qs.filter(billing = last_process.billing)
+            return qs.filter(billing = last_process.billing) if last_process else qs 
         
+        @admin.display(description="")
         def colored_status(self,obj):
             class_name = ["unactive","green","blink","red"][obj.status]
             return format_html(f'<span class="{class_name} indicator"></span>')
-        colored_status.short_description = ""
 
         def time(obj):
             return (f"{obj.time} SEC") if obj.time is not None else '-'
         
-        list_display = ["colored_status","process",time]
-        
-    class LastBillStatisticsAdmin(admin.ModelAdmin):
+        list_display = ["colored_status","process","time"]
+            
+    ## Billing Statistics Admin (Abstract class)
+    class BillStatisticsAdmin(admin.ModelAdmin):
         actions = None
         list_display = ["type","count"]
+        ordering = ["id"]
+
+    class LastBillStatisticsAdmin(BillStatisticsAdmin):
+         def get_queryset(self, request) :
+            return super().get_queryset(request).filter( type__contains = "LAST" )
+
+    class TodayBillStatisticsAdmin(BillStatisticsAdmin):
         def get_queryset(self, request) :
-            return models.BillStatistics.objects.filter( type__contains = "LAST" ).reverse()
-    
-    class TodayBillStatisticsAdmin(admin.ModelAdmin):
-        actions = None
-        list_display = ["type","count"]
-        def get_queryset(self, request) :
-            return models.BillStatistics.objects.exclude( type__contains = "LAST" ).reverse()
+            return super().get_queryset(request).exclude( type__contains = "LAST" )
 
     today = datetime.date.today()
-    sales_qs = models.Sales.objects.filter(date  = today,type = "sales")
-    today_stats = {"bill_count" : sales_qs.exclude(beat__contains = "WHOLE").count() , 
-                   "collection_count" : models.Collection.objects.filter(date  = today).count() }
 
-    if today_stats["bill_count"] : 
-       today_stats |= {"bills_start" : sales_qs.first().inum , "bills_end" : sales_qs.last().inum }
-    else :
-       today_stats |= {"bills_start" : None , "bills_end" : None }
+    sales_qs = models.Sales.objects.filter(date  = today,type = "sales").exclude(beat__contains = "WHOLE").annotate(
+        bill_count = Count("inum") ,  start_bill_no = Max("inum") , end_bill_no = Min("inum") 
+    )
 
     today_stats |= models.Billing.objects.filter(start_time__gte = today).aggregate( 
         success = Count("status",filter=Q(status = 1)) , failed = Count("status",filter=Q(status = 3))
@@ -367,7 +339,7 @@ def get_bill_statistics(request) -> list :
     last_stats = models.Billing.objects.filter(start_time__gte = today).order_by("-start_time").first()
 
     if last_stats is not None : 
-        stats = {"LAST BILLS COUNT" : last_stats.bill_count or 0,"LAST COLLECTION COUNT" : last_stats.collection.count() ,  
+        stats = {   "LAST BILLS COUNT" : last_stats.bill_count or 0,"LAST COLLECTION COUNT" : last_stats.collection.count() ,  
                     "LAST BILLS" : f'{last_stats.start_bill_no or ""} - {last_stats.end_bill_no or ""}', 
                     "LAST STATUS" : ["DID NOT START","SUCCESS","ONGOING","ERROR"][last_stats.status] , 
                     "LAST TIME" : f'{last_stats.start_time.strftime("%H:%M:%S")}' }
@@ -503,6 +475,7 @@ class BaseOrderAdmin(CustomAdminModel,ChangeOnly) :
 class MyActionForm(forms.Form):
         custom_field = forms.CharField(max_length=100, label='Enter Value')
 
+
 ## Billing Admin
 class BillingAdmin(BaseOrderAdmin) :   
 
@@ -526,11 +499,10 @@ class BillingAdmin(BaseOrderAdmin) :
             return queryset
 
         def choices(self, changelist):
-            # Create an input field
+        # Override choices to return only the input box, no <a> tag
             return [{
-                'selected': False,
-                'query_string': changelist.get_query_string({self.parameter_name: ''}),
-                'display': mark_safe('<input type="text" name="custom_input" />')
+            'query_string': '',
+            'display': mark_safe('<input type="text" name="custom_input" value="{}" />'.format(self.value() or ''))
             }]
     
     list_filter = (CustomInputFilter,"beat")
@@ -551,44 +523,50 @@ class BillingAdmin(BaseOrderAdmin) :
             return qs.none() 
         return qs.filter(billing = last_billing,place_order=True) 
     
-    def changelist_view(self, request, extra_context=None):   
-        ## This attribute says get_queryset function whether to filter the creditlocks only for last billing (or) all billing
-
+    def changelist_view(self, request, extra_context=None): 
+         ## This attribute says get_queryset function whether to filter the creditlocks only for last billing (or) all billing
         today = datetime.date.today()
+        INF_TIME = 1e7
+        Actions = Enum("Actions","start refresh quit")
+
+        class BillingForm(forms.Form) : 
+            max_lines = forms.IntegerField(initial=100,  widget=forms.TextInput(attrs={'placeholder': 'Maximum Lines'}))
+            time_interval = forms.IntegerField(initial=10, widget=forms.TextInput(attrs={'placeholder': 'Time Interval'}))
+            action = forms.ChoiceField(choices=Actions.__members__.items(),initial=Actions.quit.name)
+            def clean(self):
+                cleaned_data = super().clean()
+                cleaned_data["action"] = Actions[cleaned_data["action"]]
+                return cleaned_data 
         
-        time_interval = int( request.POST.get("time_interval",10) )
-        time_interval_milliseconds = time_interval * 1000 * 60
-        next_action = "unknown"
+        next_action_time_interval = INF_TIME
+        next_action = Actions.quit 
 
-        if request.method == "POST" :             
-            action = request.POST.get("action_name")
+        if request.method == "POST" : 
+            form = BillingForm(request.POST)
+            if form.is_valid() : 
+                curr_action = form.cleaned_data["action"]
+                if (curr_action == Actions.start) or (curr_action == Actions.quit) : self.save_changelist(request)
 
-            if (action == "start") or (action == "quit"):                 
-                self.save_changelist(request)
-
-            if action == "start" : 
-                start(request)
-                next_action = "refresh"
-            if action == "refresh" :
-                next_action = "refresh" if billing_lock.locked() else "start"
-            if action == "quit" : 
-                time_interval_milliseconds = int(1e7)
-            if next_action == "refresh" :
-                time_interval_milliseconds = 5 * 1000
-            
-            print("action :",action,"next :",next_action,"time :",time_interval_milliseconds)
+                if curr_action == Actions.start : 
+                    # start(request)
+                    next_action = Actions.refresh 
+                if curr_action == Actions.refresh : 
+                    next_action = Actions.start if billing_lock.locked() else Actions.refresh
+                
+                action_time_map = { Actions.start : form.cleaned_data["time_interval"] * 60 , Actions.refresh : 5 , Actions.quit : INF_TIME }
+                next_action_time_interval = action_time_map[ next_action ] * 1000 
+        else : 
+            form = BillingForm()
 
         tables = get_bill_statistics(request) 
-        line_count = int(request.POST.get("line_count",100))
 
-        return super().changelist_view( request , extra_context={ "title" : "" ,"tables" : tables ,  
-        "time_interval_milliseconds" : time_interval_milliseconds , "time_interval" : time_interval , 
-        "line_count" : line_count , "auto_action_type" : next_action  } ) 
+        return super().changelist_view( request , extra_context={ "title" : "" ,"tables" : tables ,  "form" : form ,  
+        "next_action_time_interval" : next_action_time_interval , "next_action" : next_action.name  }) 
 
 
    
 
-class OrdersAdmin(BaseOrderAdmin) :
+class OrdersAdmin(ReadOnly,BaseOrderAdmin) :
     
     list_display_links = ["order_no"]
     list_display =  ["partial","order_no","party","lines","value","OS","coll","salesman","beat","creditlock","delete","phone"] 
@@ -597,6 +575,7 @@ class OrdersAdmin(BaseOrderAdmin) :
 
     actions = ['custom_action']
 
+    
     def custom_action(self, request, queryset):
         form = None
         if 'apply' in request.POST:
@@ -1055,12 +1034,40 @@ class PrintAdmin(CustomAdminModel,ReadOnly) :
 #         party = "SRI MANONMANI STORE" #"Saravana Pazhamudir Cholai-F" #"SRI BALAJI SUPER MARKET-D" #"A V STORE-D"
 #         return super().get_queryset(request).filter(party_id = "P16048")
 
-admin_site.register(models.Outstanding,OutstandingAdmin)
+
+class MyAdminSite(admin.AdminSite):
+
+    models_on_navbar = []
+    
+    def get_app_list(self, request,app_label=None):
+        """
+        Return a sorted list of all the installed apps that have been registered
+        in this admin site, excluding certain models.
+        """
+        app_list = super().get_app_list(request,app_label)
+        for app in app_list:
+            models = [ model_dictionary for model_dictionary in app["models"] if model_dictionary["model"] in self.models_on_navbar ]
+            models = sorted(models,key = lambda model_dict : self.models_on_navbar.index(model_dict["model"]))
+            app["models"] = models
+        return app_list
+    
+    def register(self, model_or_iterable, admin_class = None, show_on_navbar = True,options = {}):
+        super().register(model_or_iterable, admin_class, **options)
+        if not isinstance(model_or_iterable,Iterable) : model_or_iterable = [model_or_iterable,]
+        for model in model_or_iterable : 
+            if show_on_navbar : self.models_on_navbar.append(model)
+
+admin_site = MyAdminSite(name='myadmin')
+admin_site.has_permission = lambda r: setattr(r, 'user', AccessUser()) or True
+
+
 admin_site.register(models.Orders,BillingAdmin)
-admin_site.register(models.OrdersProxy,OrdersAdmin)
+admin_site.register(models.Outstanding,OutstandingAdmin)
+
 admin_site.register(models.Bank,BankAdmin)
 admin_site.register(models.SalesmanCollection,SalesCollectionAdmin)
 admin_site.register(models.Print,PrintAdmin)
+admin_site.register(models.OrdersProxy,OrdersAdmin,show_on_navbar=False)
 
 
 

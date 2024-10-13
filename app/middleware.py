@@ -23,7 +23,7 @@ def outstanding_mongo_upload() :
         from app_outstanding left outer join app_beat on app_outstanding.beat = app_beat.name
         where  balance <= -1 and days like '%{day}%' """,connection)
     db.delete_many({})
-    db.insert_many(outstanding.to_dict('records'))
+    if len(outstanding.index) :  db.insert_many(outstanding.to_dict('records'))
 
     db = client["test"]["users"] 
     users = pd.read_sql(f"""select salesman_name as user , 'devaki' as password from app_beat """,connection)

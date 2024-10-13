@@ -123,7 +123,7 @@
 {{ media.js }}
 <script src="{% static 'admin/js/filters.js' %}" defer></script>
 <script>
-    window.setTimeout(() =>  document.getElementById("{{auto_action_type}}").click() , {{time_interval_milliseconds}} )
+    window.setTimeout(() =>  document.getElementById("{{next_action}}").click() , {{next_action_time_interval}} )
 </script>
 
 {% endblock %}
@@ -164,18 +164,20 @@
         
         <form id="changelist-form" method="post"{% if cl.formset and cl.formset.is_multipart %} enctype="multipart/form-data"{% endif %} novalidate>{% csrf_token %}
             <marquee id="marquee"> 
-              {% if auto_action_type == "refresh" or auto_action_type == "start"  %} 
+              {% if next_action == "refresh" or next_action == "start"  %} 
               Quit Process 
               {% else %}
               Start the Process 
               {% endif %}
             </marquee> 
-            
 
-            <input type="number" name="line_count" form="changelist-form" placeholder="Maximum alloted line" value="{{line_count}}" >
-            <input type="number" name="time_interval" placeholder="Sleep time in minutes" value="{{time_interval}}" >
-            <button type="submit" form="changelist-form" name="action_name" value="start" id = "start" >Start</button>
-            <button type="submit" form="changelist-form" name="action_name" value="quit">Quit</button>
+            {{form.max_lines}}
+            {{form.time_interval}}
+
+            <button type="submit" form="changelist-form" name="action" value="start" id = "start" >Start</button>
+            <button type="submit" form="changelist-form" name="action" value="quit">Quit</button>
+            <button type="submit" form="changelist-form" name="action" value="refresh" id="refresh" hidden>Refresh</button>
+
             {% comment %} <button onclick="window.open('/manual_print','_blank')">Manual Printing</button> {% endcomment %}
             {% comment %} <button onclick="window.open('/app/ordersproxy/?place_order__exact=0','_blank')">View Orders</button> {% endcomment %}
             
@@ -184,7 +186,6 @@
             <a href='/app/ordersproxy/?billing=last&place_order__exact=1&creditlock__exact=0' target="_blank" class="hyperlink" >Pending Orders</a>
             <a href='/party-sync' target="_blank" class="hyperlink" >Beat Export</a>
             
-            <button type="submit" form="changelist-form" name="action_name" value="refresh" id="refresh" hidden>Refresh</button>
             {% if cl.formset %}
           <div>{{ cl.formset.management_form }}</div>
         {% endif %}
