@@ -12,6 +12,6 @@ REM Install required packages
 pip install -r requirements.txt
 
 REM Run migrations
-python3 manage.py migrate
+python manage.py migrate
 
 pause
