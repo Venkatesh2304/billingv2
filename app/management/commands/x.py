@@ -38,6 +38,7 @@ print( pd.read_sql(f"select * from app_outstanding where inum = 'A34406' ",conne
 
 cur = connection.cursor()
 
+cur.execute("DROP VIEW IF EXISTS app_outstandingraw")
 
 date = str(datetime.date.today()) 
 day = datetime.datetime.strptime(date,"%Y-%m-%d").strftime("%A").lower()

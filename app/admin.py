@@ -664,6 +664,7 @@ class OutstandingAdmin(CustomAdminModel) :
 
     class OutstandingForm(forms.Form) : 
             date = forms.DateField(required=False,initial=datetime.date.today(),widget=forms.DateInput(attrs={'type' : 'date'}))
+            wholesale= forms.BooleanField(required=False,label="Include Wholesale",initial=True)
             Submit = submit_button("Download")
             Action = reverse_lazy("admin:get-outstanding-report")
             
@@ -679,23 +680,23 @@ class OutstandingAdmin(CustomAdminModel) :
     def get_outstanding_report(self,request) : 
         form = self.OutstandingForm(request.POST)
         if not form.is_valid() : return 
-        date = form.cleaned_data.get("date",self.today)
+        date = form.cleaned_data.get("date")or self.today
         day = date.strftime("%A").lower()
-        outstanding:pd.DataFrame = query_db(f"""select * from (
+        
+        outstanding:pd.DataFrame = query_db(f"""
         select salesman_name as salesman , (select name from app_party where party_id = code) as party , beat , inum as bill , 
         (select -amt from app_sales where inum = app_outstanding.inum) as bill_amt , -balance as balance , 
         (select phone from app_party where code = party_id) as phone , 
         round(julianday('{date}') - julianday(date)) as days , 
         days as weekday 
         from app_outstanding left outer join app_beat on app_outstanding.beat = app_beat.name
-        where  balance <= -1)
-        where days >= 28 or weekday like '%{day}%'
+        where  balance <= -1
         """,is_select = True)  # type: ignore 
 
         IGNORED_PARTIES_FOR_OUTSTANDING = ["SUBASH ENTERPRISES","TIRUMALA AGENCY-P","TIRUMALA AGENCY-D","ANANDHA GENERAL MERCHANT-D-D-D"]
         outstanding = outstanding[~outstanding["party"].isin(IGNORED_PARTIES_FOR_OUTSTANDING)]
-        
         outstanding["coll_amt"] = outstanding["bill_amt"] - outstanding["balance"]
+        outstanding = outstanding[["salesman","beat","party","bill","bill_amt","coll_amt","balance","days","phone","weekday"]]
         pivot_fn = lambda df : pd.pivot_table(df,index=["salesman","beat","party","bill"],values=['bill_amt','coll_amt','balance',"days","phone"],aggfunc = "first") # type: ignore
         output = BytesIO()
         writer = pd.ExcelWriter(output, engine='xlsxwriter')
