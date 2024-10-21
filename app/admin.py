@@ -493,7 +493,7 @@ class BillingAdmin(BaseOrderAdmin) :
 
     change_list_template = "billing.html"
     list_display_links = ["party"]
-    list_display = ["release","party","lines","value","OS","coll","salesman","beat","phone","delete","cheque"] 
+    list_display = ["release","party","lines","value","OS","coll","salesman","beat","phone","delete","type","cheque"] 
     list_editable = ["release","delete"]
     ordering = ["-release","salesman"]
     actions = None
@@ -524,7 +524,7 @@ class BillingAdmin(BaseOrderAdmin) :
         today = datetime.date.today()
 
         today_stats = models.Sales.objects.filter(date  = today,type = "sales").exclude(beat__contains = "WHOLE").aggregate(
-            bill_count = Count("inum") ,  start_bill_no = Max("inum") , end_bill_no = Min("inum") 
+            bill_count = Count("inum") ,  start_bill_no = Min("inum") , end_bill_no = Max("inum") 
         )
 
         today_stats |= models.Billing.objects.filter(start_time__gte = today).aggregate( 
@@ -688,10 +688,15 @@ class OutstandingAdmin(CustomAdminModel) :
         round(julianday('{date}') - julianday(date)) as days , 
         days as weekday 
         from app_outstanding left outer join app_beat on app_outstanding.beat = app_beat.name
-        where  balance <= -1 and beat not like '%WHOLESALE%' )
+        where  balance <= -1)
         where days >= 28 or weekday like '%{day}%'
-        """,is_select = True)  # type: ignore
-        pivot_fn = lambda df : pd.pivot_table(df,index=["salesman","beat","party","bill"],values=['balance',"days","phone"],aggfunc = "first") # type: ignore
+        """,is_select = True)  # type: ignore 
+
+        IGNORED_PARTIES_FOR_OUTSTANDING = ["SUBASH ENTERPRISES","TIRUMALA AGENCY-P","TIRUMALA AGENCY-D","ANANDHA GENERAL MERCHANT-D-D-D"]
+        outstanding = outstanding[~outstanding["party"].isin(IGNORED_PARTIES_FOR_OUTSTANDING)]
+        
+        outstanding["coll_amt"] = outstanding["bill_amt"] - outstanding["balance"]
+        pivot_fn = lambda df : pd.pivot_table(df,index=["salesman","beat","party","bill"],values=['bill_amt','coll_amt','balance',"days","phone"],aggfunc = "first") # type: ignore
         output = BytesIO()
         writer = pd.ExcelWriter(output, engine='xlsxwriter')
         pivot_fn(outstanding[ (outstanding.days >= 21) & outstanding.weekday.str.contains(day) ]).to_excel(writer, sheet_name='21 Days')
@@ -1276,11 +1281,11 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
 
         def get_default_beat_export_date() :
             days = 6 
-            return  (self.today + datetime.timedelta(days=days)) if self.today.day <= (20 - days) else self.today.replace(day=20)
+            return  (self.today + datetime.timedelta(days=days)) if (self.today.day <= (20 - days)) or (self.today.day > 20) else self.today.replace(day=20)
         
         class BasepackForm(forms.Form) : 
             date = forms.DateField(required=False,initial=get_default_beat_export_date(),
-                                   label="Beat Export Date", widget=forms.DateInput(attrs={'type' : 'date'}))
+                                   label="Beat Export Date", widget=forms.DateInput(attrs={'type' : 'date'}),disabled=True)
             Submit = submit_button("Submit")
             download = submit_button("Download")
             Action = ""
@@ -1302,8 +1307,7 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
                     thread.start()
             
         refresh_time = 10000 if self.basepack_lock.locked() else 1e7 
-        return super().changelist_view(request, extra_context | {"refresh_time" : refresh_time , 
-                                                                 "form" : form, "title" : hyperlink("/static/basepack.xlsx","Download Report",new_tab=False) })
+        return super().changelist_view(request, extra_context | {"refresh_time" : refresh_time , "form" : form, "title" : "" })
                 
 
 
@@ -1343,6 +1347,9 @@ class MyAdminSite(admin.AdminSite):
                 "Outstanding": reverse("admin:app_outstanding_changelist"),
                 "Cheque": reverse("admin:app_bank_changelist"),
                 "Salesman Cheque": query_url("admin:app_salesmancollection_changelist" , {"time":"Today"}),
+            },
+            "Others": {
+                "Beat Export": reverse("admin:app_basepackprocessstatus_changelist"),
             },
         }
         context['navbar_data'] = navbar_data
