@@ -1,5 +1,9 @@
 
-from app.common import * 
+from app.common import INVENTORY, bulk_raw_insert, inventory_insert, ledger_insert,query_db,both_insert,moc_calc,calc_tcs,calc_tds
+import pandas as pd 
+import app.models as models 
+
+
 CLAIM_SERVICE_TDS_RATE = 0.02  
 
 def delete_sales(type) : 
@@ -15,7 +19,7 @@ def sales_insert(sales_reg,sales_gst,sales_type,permanent) :
     disc = disc.rename(columns={"amt_new":"amt"})
     disc["type"] = disc["sub_type"].replace({"schdisc":"stpr","pecom":"stpr"})
     disc = disc.rename(columns={"inum":"bill_id"})
-    both_insert("sales",sales_reg[ Sales.columns + ["tcs"] ],sales_gst,"bill")
+    both_insert("sales",sales_reg[ models.Sales.columns + ["tcs"] ],sales_gst,"bill")
     print_table = sales_reg[["inum"]].rename(columns={"inum":"bill_id"})
     bulk_raw_insert("print",print_table,ignore=True)
     if permanent : bulk_raw_insert("discount",disc)
@@ -52,7 +56,7 @@ def refresh_outstanding(func) :
     return decorated_function
 
 @refresh_outstanding
-def SalesInsert(sales_reg,gst,permanent=False) : 
+def SalesInsert(sales_reg,gst=None,permanent=False) : 
    
    if len(sales_reg.index) == 0 : return 
 
@@ -63,16 +67,15 @@ def SalesInsert(sales_reg,gst,permanent=False) :
    
    sales_gst_map = { "Invoice No" : "inum", "Taxable" : "txval","UQC" : "stock_id","Total Quantity" : "qty" ,"Tax - Central Tax" : "rt","HSN":"hsn" , 
                     "HSN Description" : "desc" }
-   
+
    df = sales_reg.rename(columns=sales_reg_map).iloc[:-1]
    df["CGST"] = df["SGST"] = (df["Tax Amt"] -  df["SRT Tax"])/2
    df["amt"] = -(df["BillValue"]+df["CR Adj"])
    df["other discount"] = df["DisFin Adj"] + df["Reversed Payouts"]
     
    df[SALES_DISC_COLUMS] = -df[SALES_DISC_COLUMS]
-   
    df["crdsales"] = df["Crd Sales"] - df["Sal Ret"]
-   df["date"] = df["date"].dt.date
+   df["date"] = pd.to_datetime(df.date,format="%Y-%m-%d").dt.date
    
    sales_gst = None 
    if gst is not None : 
@@ -127,7 +130,7 @@ def CollectionInsert(coll) :
    coll = coll[coll.Status != "CAN"]
    coll["mode"] = coll.Status.replace({"CSH":"Cash"} | { k : "Bank" for k in ["CHQ","NEFT","RTGS","UPI","IMPS"] })
    coll["party_id"] = None
-   ledger_insert("collection",coll[ Collection.columns ])
+   ledger_insert("collection",coll[ models.Collection.columns ])
    query = """UPDATE app_collection SET party_id = (
     select * from 
     (
@@ -150,16 +153,19 @@ def AdjustmentInsert(crnote) :
     df["inum"] = df["inum"] + "-" + df["hash"]
     df["date"] = df["date"].dt.date 
     df["amt"] = 0 #amt is always zero as there is no net transaction 
-    ledger_insert("adjustment",df[Adjustment.columns])
+    ledger_insert("adjustment",df[models.Adjustment.columns])
 
-def PartyInsert(df) : 
-    pm = df.rename(columns={"Party Name":"name","Address":"addr","Party Code":"code",
+def PartyInsert(party) : 
+    pm = party.rename(columns={"Party Name":"name","Address":"addr","Party Code":"code",
                             "HUL Code":"hul_code","Party Master Code":"master_code"})[["addr","name","code","master_code","hul_code"]]
     pm = pm.drop_duplicates("code")
     strips = lambda df,val : df.str.split(val).str[0].str.strip(" \t,")
     pm["phone"] = pm["addr"].str.split("PH :").str[1].str.strip()
     pm["addr"] = strips( strips( strips( pm["addr"] , "TRICHY" )  , "PH :" ) , "N.A" )
     bulk_raw_insert("party",pm,is_partial_upsert=True,index="code")
+
+def BeatInsert(beats) : 
+    bulk_raw_insert("beat",beats)
 
 # query_db("update app_inventory set qty = -abs(qty) where bill_id is not null and (select type from app_sales where inum=bill_id) in ('sales','claimservice') ")
 # query_db("update app_inventory set qty = abs(qty) where bill_id is not null and (select type from app_sales where inum=bill_id) not in ('sales','claimservice') ")

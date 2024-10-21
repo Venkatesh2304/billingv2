@@ -31,7 +31,9 @@ pd.options.display.float_format = '{:.2f}'.format
 # exit(0)
 from app.models import Orders,OrderProducts
 
-print( Orders.objects.filter(date  = datetime.date.today(),party__name="SRI MURUGAN STORES-ALWAR THOPE-D-D").all() )
+print( Orders.objects.filter(beat__isnull = True).all() )
+print( Outstanding.objects.filter(inum = "A34406").first().party.name )
+print( pd.read_sql(f"select * from app_outstanding where inum = 'A34406' ",connection)  )
 
 
 cur = connection.cursor()
@@ -42,7 +44,7 @@ day = datetime.datetime.strptime(date,"%Y-%m-%d").strftime("%A").lower()
 
 print( pd.read_sql(f"SELECT  * from app_beat where salesman_name like '%AVINAS%' and days like '%wed%' ",connection)  )
 # print( pd.read_sql(f"SELECT  * from app_sales join app_party on code = party_id where beat = 'D-KATTUR 4S' and name like 'BHA%' ",connection)  )
-
+cur.execute("DROP VIEW IF EXISTS app_outstandingraw")
 exit(0)
 
 

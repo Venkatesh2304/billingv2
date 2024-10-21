@@ -1,0 +1,27 @@
+.indicator {
+    height: 15px;
+    width: 15px;
+    opacity: 75%;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.green {
+    background: green;
+}
+
+.red {
+    background: red;
+}
+.unactive {
+    background: rgb(200,200,200);
+}
+@keyframes blinker {
+    50% {
+        opacity: 0;
+    }
+}
+.blink {
+    animation: blinker 1s linear infinite;
+    background: green;
+}

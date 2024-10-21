@@ -1,8 +1,13 @@
+import base64
 from collections import defaultdict
 from collections import abc
 import datetime
 from functools import partial, update_wrapper
+import functools
 from io import BytesIO
+import json
+import custom.secondarybills  as secondarybills
+from dal import autocomplete
 import logging
 import multiprocessing
 import os
@@ -10,43 +15,47 @@ import re
 import shutil
 from threading import Thread
 import threading
+from django.contrib.admin.views.main import ChangeList
 import time
 import traceback
 from typing import Any, Dict, Optional, Type
 from django import forms
 from django.contrib import admin
 from django.contrib.admin.views.main import ChangeList
+from django.core.handlers.wsgi import WSGIRequest
+from django.db.models.base import Model
 from django.db.models.query import QuerySet
-from django.http import HttpResponse, HttpResponseRedirect
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.http.request import HttpRequest
 from django.shortcuts import redirect, render
 from django.template.response import TemplateResponse
+from django.urls.resolvers import URLPattern
 import numpy as np
+from openpyxl import load_workbook
 import pandas as pd
-from enum import Enum
+from enum import Enum, IntEnum
 from app.common import both_insert, bulk_raw_insert, query_db
 import app.models as models 
 from django.utils.html import format_html
 from django.contrib.admin.templatetags.admin_list import register , result_list  
 from django.contrib.admin.templatetags.base import InclusionAdminNode
 from custom.Session import Logger  
-from custom.classes import Billing,IkeaDownloader
+from typing import Callable
+from custom.classes import Billing,IkeaDownloader,Einvoice
 from django.utils.safestring import mark_safe
 from django.utils import timezone
 from django.db.models import Max,F,Subquery,OuterRef,Q,Min,Sum,Count
-from django.contrib.admin import helpers, widgets
 from collections import namedtuple
-from app.sales_import import AdjustmentInsert, CollectionInsert, SalesInsert
-from django.urls import path, reverse
+from app.sales_import import AdjustmentInsert, BeatInsert, CollectionInsert, PartyInsert, SalesInsert
+from django.urls import path, reverse, reverse_lazy
 from django.contrib import messages
 import dal.autocomplete
-from django.contrib.admin.actions import delete_selected
 from pytz import timezone
 from custom.Session import client
 import app.loading_sheet as loading_sheet
-from django.contrib.admin.utils import quote
 from collections.abc import Iterable
-import abc
+from concurrent.futures import ThreadPoolExecutor
+from urllib.parse import urlencode
 
 def user_permission(s,*a,**kw) : 
     if a and False : return False #or "add" in a[0] "change" in a[0] or ("add" in a[0] ) 
@@ -56,6 +65,8 @@ class AccessUser(object):
     has_module_perms = has_perm = __getattr__ = user_permission
 
 
+def submit_button(text) : 
+    return forms.CharField(required=False,label="",initial=text,widget=forms.TextInput(attrs={'type' : 'submit'}))
 
 def bold(function) : 
     def wrapper(*args,**kwargs) : 
@@ -63,10 +74,13 @@ def bold(function) :
     update_wrapper(wrapper, function)
     return wrapper
 
-def hyperlink(url,text,new_tab=True) :  
-    if new_tab :  return format_html("<a href='{}' target='_blank'>{}</a>",url, text)
-    else : return format_html("<a href='{}'>{}</a>",url, text)
+def hyperlink(url,text,new_tab=True,style = "") :  
+    if new_tab :  return format_html("<a href='{}' style='{}' target='_blank'>{}</a>",url, style,text)
+    else : return format_html("<a href='{}' style='{}'>{}</a>",url, style,text)
 
+def render_confirmation_page(template_name,request,queryset,extra_context = {}) :
+     return render(request,template_name, context={'post_data': {key: request.POST.getlist(key) for key in request.POST} , 
+                                                "queryset" : queryset, "show_objects" : False , "show_cancel_btn" : False } | extra_context )
 
 @register.tag(name="custom_result_list")
 def result_list_tag(parser, token):
@@ -79,333 +93,278 @@ def result_list_tag(parser, token):
         takes_context=False,
     )
 
-def check_last_sync(model_class,limit) :
+def create_simple_admin_filter(title_name,paramter,lookups: dict[str,Callable] = {}) :
+
+    class CustomFilter(admin.SimpleListFilter):
+        title = title_name
+        parameter_name = paramter
+        
+        def lookups(self, request, model_admin) -> list[tuple[str, str]]:
+            return list(zip(lookups.keys(),lookups.keys()))
+
+        def queryset(self, request, queryset):
+            for lookup,queryset_filter in lookups.items() : 
+                if lookup == self.value() : 
+                    return queryset_filter(queryset)
+            return queryset
+
+    return CustomFilter   
+
+
+START_DATE = datetime.date(2024,4,1)
+
+def check_last_sync(type,limit) :
     if limit is None : return False 
-    last_synced = models.Sync.objects.filter( process = model_class.__name__ ).first()
+    last_synced = models.Sync.objects.filter( process = type.capitalize() ).first()
     if last_synced : 
-        if (datetime.datetime.now() - last_synced.time).seconds < limit : return True
+        if isinstance(limit,int) :  
+            if (datetime.datetime.now() - last_synced.time).seconds <= limit : return True
+        elif isinstance(limit,datetime.date) : 
+            if last_synced.time.date() >= limit : return True
+        elif isinstance(limit,datetime.datetime):  
+            if last_synced.time >= limit : return True
+        else : 
+            raise Exception(f"Limit specified for {type} = {limit} is not an instance of int,datetime.date or datetime.datetime")
     return False 
 
-def check_all_last_sync(limit) :
-    SyncTuple = namedtuple("sync_tuple",["sales","adjustment","collection"])
-    return SyncTuple( *[ check_last_sync(model,limit) for model in [models.Sales,models.Adjustment,models.Collection]] )
+def sync_reports(billing = None,limits = {},min_days_to_sync = {}) -> bool :
+    min_days_to_sync = defaultdict(lambda : 2 , min_days_to_sync )
+    get_sync_from_date_for_model = lambda model_class : min( model_class.objects.aggregate(date = Max("date"))["date"] or START_DATE ,
+                                                    datetime.date.today() - datetime.timedelta(days=min_days_to_sync[model_class.__name__]) )
+    
+    DeleteType = Enum("DeleteType","datewise all none")
+    FunctionTuple = namedtuple("function_tuple",["download_function","model","insert_function","has_date_arg","delete_type"])
+    function_mappings = { "sales" : FunctionTuple(Billing.sales_reg,models.Sales,SalesInsert,has_date_arg=True,delete_type=DeleteType.datewise) , 
+                          "adjustment" : FunctionTuple(Billing.crnote,models.Adjustment,AdjustmentInsert,has_date_arg=True,delete_type=DeleteType.datewise) , 
+                          "collection" : FunctionTuple(Billing.collection,models.Collection,CollectionInsert,has_date_arg=True,delete_type=DeleteType.datewise) , 
+                          "party" : FunctionTuple(Billing.party_master,None,PartyInsert,has_date_arg=False,delete_type=DeleteType.none) , 
+                          "beat" : FunctionTuple(Billing.get_plg_maps,models.Beat,BeatInsert,has_date_arg=False,delete_type=DeleteType.all) , 
+                        }
+    
+    insert_types_to_update = []
+    for insert_type,limit in limits.items() : 
+        if insert_type not in function_mappings : raise Exception(f"{insert_type} is not a valid Insert type")
+        if not check_last_sync(insert_type,limit) : insert_types_to_update.append(insert_type)
 
-def sync_ikea_report(download_function,insert_function,model_class,kwargs) : 
-    last_updated_date = min( model_class.objects.aggregate(date = Max("date"))["date"] or datetime.date(2024,4,1),
-                                         datetime.date.today() - datetime.timedelta(days=2) )    
-    models.Sync.objects.update_or_create( process = model_class.__name__ , defaults={"time" : datetime.datetime.now()})
-    print( "Synced :", model_class.__name__ )
-    df = download_function(last_updated_date,datetime.date.today())
-    model_class.objects.filter(date__gte = last_updated_date).delete()
-    return insert_function(df,**kwargs)
-
-def sync_all_reports(billing = None,limit = None) :
-    last_sync = check_all_last_sync(limit)
-    if all(last_sync) : return 
+    if len(insert_types_to_update) == 0 : return False 
     if billing is None : billing = Billing()
-    if not last_sync.sales : 
-        sync_ikea_report(billing.sales_reg, SalesInsert,models.Sales,{"gst" : None,"permanent" : False})
-    if not last_sync.adjustment : 
-        sync_ikea_report(billing.crnote, AdjustmentInsert,models.Adjustment,{})
-    if not last_sync.collection : 
-        sync_ikea_report(billing.collection, CollectionInsert,models.Collection,{})
+    with ThreadPoolExecutor() as executor:
+        futures = []
+        for insert_type in insert_types_to_update : 
+            functions = function_mappings[insert_type]
+            if functions.has_date_arg : 
+                last_updated_date = get_sync_from_date_for_model(functions.model)
+                futures.append( executor.submit(functions.download_function, billing, last_updated_date, datetime.date.today()) )
+            else : ## No date argument required 
+                futures.append( executor.submit(functions.download_function, billing) )
 
-def update_salesman_collection() : 
-    max_time = models.SalesmanCollection.objects.aggregate(time = Max("time"))["time"]
-    if max_time : max_time = max_time.astimezone(timezone("UTC"))
-    db =  client["test"]["colls"]
-    if max_time : rows = db.find({"time" : { "$gt" :  max_time }}) 
-    else : rows = db.find() 
-    for row in rows : 
-        chq_id = str(row["_id"])
-        row["time"] = row["time"] + datetime.timedelta(hours=5,minutes=30)
-        models.SalesmanCollection.objects.get_or_create(id = chq_id , defaults = {"amt" :row["amount"], "date" :row["date"] , "time" : row["time"] , 
-                                                                                    "salesman": row["user"] , "type" : row["type"]})
-        for bill in row["bills"] : 
-            models.SalesmanCollectionBill.objects.get_or_create(id = str(bill["_id"]) , defaults = 
-                                                        {"inum_id" : bill["bill_no"] , "amt" :bill["amount"],  "chq_id" : chq_id})
-                    
+        for insert_type,future in zip(insert_types_to_update,futures) :
+            functions = function_mappings[insert_type]
+            df = future.result()
+
+            if functions.delete_type == DeleteType.datewise : 
+                last_updated_date = get_sync_from_date_for_model(functions.model)
+                functions.model.objects.filter(date__gte = last_updated_date).delete()
+            elif functions.delete_type == DeleteType.all : 
+                functions.model.objects.all().delete()
+            elif functions.delete_type == DeleteType.none : 
+                pass 
+            else : 
+                raise Exception(f"{functions.delete_type} is not a valid delete type")
+
+            functions.insert_function(df)
+            models.Sync.objects.update_or_create( process = insert_type.capitalize() , defaults={"time" : datetime.datetime.now()})
+    return True 
+
+            
+BillingStatus = IntEnum("BillingStatus",(("NotStarted",0),("Success",1),("Started",2),("Failed",3)))
 
 billing_process_names = ["SYNC" , "PREVBILLS" , "RELEASELOCK" , "COLLECTION", "ORDER"  , "REPORTS" , 
                           "DELIVERY" , "DOWNLOAD" , "PRINT" ][:-2]
 billing_lock = threading.Lock()
 
-def run_billing_process(billing_log,params : dict) :
-    
-    today =datetime.date.today()
-    last_billing = models.Billing.objects.filter(start_time__gte = today).order_by("-start_time")
-    orders = models.Orders.objects.filter(billing = last_billing[1]) if last_billing.count() > 1 else models.Orders.objects.none()
+def run_billing_process(billing_log: models.Billing,billing_form : forms.Form) :
 
-    line_count = int(params["line_count"][0])    
-    # today_pushed_collections = models.PushedCollection.objects.filter( billing__start_time__gte = today ).values_list("party_code",flat=True)
-    lines_count = { order.order_no : order.products.count() for order in models.Orders.objects.filter(date = today) }
-    delete_orders = [ order.order_no for order in orders.filter(delete = True).all() ]
-    creditrelease = list(orders.filter(release = True,delete=False,creditlock=True))
-    creditrelease = pd.DataFrame([{ "partyCode":order.party_id , "parCodeRef":order.party_id , "parHllCode": order.party.hul_code , 
-                       "showPLG" : order.beat.plg.replace('+','%2B') } for order in creditrelease ])
-    if len(creditrelease.index) :
-        creditrelease = creditrelease.groupby(["partyCode","parCodeRef","parHllCode","showPLG"]).size().reset_index(name='increase_count')
-        creditrelease = creditrelease.to_dict(orient="records")
-    else : 
-        creditrelease = []
-    forced_orders = [ order.order_no for order in orders.filter(force_order = True).all() ]
-    
-    print( delete_orders )
-    print( forced_orders )
-    print( creditrelease )
-    
+    ##Calculate the neccesary values for the billing
+    today = datetime.date.today()
+    max_lines = billing_form.cleaned_data["max_lines"]    
+    order_date =  billing_log.date
+
+    today_bill_values = { order.order_no : order.bill_value() for order in models.Orders.objects.filter(date = order_date) } # type: ignore
+    today_last_billing_qs = models.Billing.objects.filter(start_time__gte = today, date = order_date).order_by("-start_time")
+    last_billing_orders = models.Orders.objects.filter(billing = today_last_billing_qs[1]) if today_last_billing_qs.count() > 1 else models.Orders.objects.none()
+    delete_order_nos = [ order.order_no for order in last_billing_orders.filter(delete = True).all() ]
+    forced_order_nos = [ order.order_no for order in last_billing_orders.filter(force_order = True).all() ]
+    creditrelease = list(last_billing_orders.filter(release = True,delete=False,creditlock=True))
+    creditrelease = pd.DataFrame([ [order.party_id , order.party_id , order.party.hul_code ,order.beat.plg.replace('+','%2B')] for order in creditrelease ] , # type: ignore
+                                    columns=["partyCode","parCodeRef","parHllCode","showPLG"])
+    creditrelease = creditrelease.groupby(["partyCode","parCodeRef","parHllCode","showPLG"]).size().reset_index(name='increase_count') # type: ignore
+    creditrelease = creditrelease.to_dict(orient="records")
+
     def filter_orders_fn(order: pd.Series) : 
         return all([
-             order.on.count() <= line_count,
-             (order.on.iloc[0] not in lines_count) or (lines_count[order.on.iloc[0]] == order.on.count()),  
-             "WHOLE" not in order.m.iloc[0] ,
-             (order.t * order.cq).sum() >= 200
-        ]) or (order.on.iloc[0] in forced_orders)
+              order.on.count() <= max_lines ,
+              (order.on.iloc[0] not in today_bill_values) or abs((order.t * order.cq).sum() - today_bill_values[order.on.iloc[0]]) <= 1 , 
+              "WHOLE" not in order.m.iloc[0] ,
+              (order.t * order.cq).sum() >= 200
+            #  (order.on.iloc[0] not in today_lines_count) or (today_lines_count[order.on.iloc[0]] == order.on.count()) ,  
+        ]) or (order.on.iloc[0] in forced_order_nos)
 
-    billing = Billing(filter_orders_fn= filter_orders_fn)
+    ##Intiate the Ikea Billing Session
+    order_objects:list[models.Orders] = []
+    try :  
+        billing = Billing(order_date = order_date,filter_orders_fn = filter_orders_fn)
+    except Exception as e: 
+        print("Billing Session Failed\n" , traceback.format_exc() )
+        billing_log.error = str(traceback.format_exc())
+        billing_log.status = BillingStatus.Failed
+        billing_log.save()
+        billing_lock.release()
+        return
+    
+    ##Functions combing Ikea Session + Database 
+    def CollectionProcess() : 
+        billing.Collection()
+        models.PushedCollection.objects.bulk_create([ models.PushedCollection(
+                   billing = billing_log, party_code = pc) for pc in billing.pushed_collection_party_ids ])
+        
+    def OrderProcess() : 
+        billing.Order(delete_order_nos)
+        last_billing_orders = billing.all_orders       
+        if len(last_billing_orders.index) == 0 : return 
+
+        models.Party.objects.bulk_create([ 
+            models.Party( name = row.p ,code = row.pc ) 
+            for _,row in last_billing_orders.drop_duplicates(subset="pc").iterrows() ],
+         update_conflicts=True,
+         unique_fields=['code'],
+         update_fields=["name"])
+        filtered_orders = billing.filtered_orders.on.values
+        
+        ## Warning add and condition 
+        order_objects.extend( models.Orders.objects.bulk_create([ 
+            models.Orders( order_no=row.on,party_id = row.pc,salesman=row.s, 
+                    creditlock = ("Credit Exceeded" in row.ar) , place_order = (row.on in filtered_orders) , 
+                beat_id = row.mi , billing = billing_log , date = datetime.datetime.now().date() , type = row.ot   ) 
+            for _,row in last_billing_orders.drop_duplicates(subset="on").iterrows() ],
+         update_conflicts=True,
+         unique_fields=['order_no'],
+         update_fields=["billing_id","type","creditlock","place_order"]) )
+        
+        prev_allocated_value = { order.order_no :  order.allocated_value() for order in order_objects }
+
+        models.OrderProducts.objects.filter(order__in = order_objects,allocated = 0).update(allocated = F("quantity"),reason = "Guessed allocation")
+        models.OrderProducts.objects.bulk_create([ models.OrderProducts(
+            order_id=row.on,product=row.bd,batch=row.bc,quantity=row.cq,allocated = row.aq,rate = row.t,reason = row.ar) for _,row in last_billing_orders.iterrows() ] , 
+         update_conflicts=True,
+         unique_fields=['order_id','product','batch'],
+         update_fields=['quantity','rate','allocated','reason'])
+
+        curr_allocated_value = { order.order_no :  order.allocated_value() for order in order_objects }
+        for order in order_objects : 
+            diff = curr_allocated_value[order.order_no] - prev_allocated_value[order.order_no]
+            if diff >= 1 : 
+                order.release = False
+                order.force_order = False
+                order.save()
+        
+    def ReportProcess() :
+        sync_reports(billing,limits={"sales" : None , "adjustment" : None , "collection" : None })
+        for order in order_objects :                     
+            outstanding_qs = models.Outstanding.objects.filter(party = order.party,beat = order.beat.name,balance__lte = -1)
+            today_bill_count = models.Sales.objects.filter(party = order.party,beat = order.beat.name,
+                                                           date = datetime.date.today()).count()
+            if (today_bill_count == 0) and (outstanding_qs.count() == 1) : 
+                bill_value = order.bill_value()
+                outstanding_bill:models.Outstanding = outstanding_qs.first() # type: ignore
+                outstanding_value = -outstanding_bill.balance 
+
+                if bill_value < 200 : continue
+                
+                max_outstanding_day =  (today - outstanding_bill.date).days
+                max_collection_day = models.Collection.objects.filter(party = order.party , date = today).aggregate(date = Max("bill__date"))["date"]
+                max_collection_day = (today - max_collection_day).days if max_collection_day else 0   
+                if (max_collection_day > 21) or (max_outstanding_day >= 21): 
+                    continue 
+                if (bill_value <= 500) or (outstanding_value <= 500):
+                    order.release = True 
+                    order.save()
+        models.SalesmanCollection.fetch_from_mongo()
+                    
+    def DeliveryProcess() : 
+        billing.Delivery()
+        if len(billing.bills) == 0 : return 
+        billing_log.start_bill_no = billing.bills[0]
+        billing_log.end_bill_no = billing.bills[-1]
+        billing_log.bill_count = len(billing.bills)
+        billing_log.save()
+
+    ##Start the proccess
     billing_process_functions = [ billing.Sync , billing.Prevbills ,  (lambda : billing.release_creditlocks(creditrelease)) , 
-                                  billing.Collection ,  (lambda : billing.Order(delete_orders)) ,  (lambda : sync_all_reports(billing)) ,  
-                                  billing.Delivery , billing.Download , billing.Printbill ]
-                            
+                                  CollectionProcess ,  OrderProcess ,  ReportProcess ,  DeliveryProcess ]   
     billing_process =  dict(zip(billing_process_names,billing_process_functions)) 
-    order_objects = None 
-
+    billing_failed = False 
     for process_name,process in billing_process.items() : 
-        obj = models.ProcessStatus.objects.get(billing=billing_log,process=process_name)
-        obj.status = 2
-        obj.save()    
+        process_obj = models.BillingProcessStatus.objects.get(billing=billing_log,process=process_name)
+        process_obj.status = BillingStatus.Started
+        process_obj.save()    
         start_time = time.time()
         
         try : 
-            process()
-
-            if process_name == "ORDER" : 
- 
-                orders = billing.all_orders
-                
-                models.Party.objects.bulk_create([ 
-                    models.Party( name = row.p ,code = row.pc ) 
-                    for _,row in orders.drop_duplicates(subset="pc").iterrows() ],
-                 update_conflicts=True,
-                 unique_fields=['code'],
-                 update_fields=["name"])
-                filtered_orders = billing.filtered_orders.on.values
-                
-                ## Warning add and condition 
-                order_objects:list[models.Orders] = models.Orders.objects.bulk_create([ 
-                    models.Orders( order_no=row.on,party_id = row.pc,salesman=row.s, 
-                            creditlock = ("Credit Exceeded" in row.ar) , place_order = (row.on in filtered_orders) , 
-                        beat_id = row.mi , billing = billing_log , date = datetime.datetime.now().date() , type = row.ot   ) 
-                    for _,row in orders.drop_duplicates(subset="on").iterrows() ],
-                 update_conflicts=True,
-                 unique_fields=['order_no'],
-                 update_fields=["billing_id","type","creditlock","place_order"])
-                
-                prev_allocated_value = { order.order_no :  order.allocated_value() for order in order_objects }
-        
-                models.OrderProducts.objects.filter(order__in = order_objects,allocated = 0).update(allocated = F("quantity"),reason = "Guessed allocation")
-                models.OrderProducts.objects.bulk_create([ models.OrderProducts(
-                    order_id=row.on,product=row.bd,batch=row.bc,quantity=row.cq,allocated = row.aq,rate = row.t,reason = row.ar) for _,row in orders.iterrows() ] , 
-                 update_conflicts=True,
-                 unique_fields=['order_id','product','batch'],
-                 update_fields=['quantity','rate','allocated','reason'])
-       
-                curr_allocated_value = { order.order_no :  order.allocated_value() for order in order_objects }
-                for order in order_objects : 
-                    diff = curr_allocated_value[order.order_no] - prev_allocated_value[order.order_no]
-                    if diff >= 1 : 
-                        order.release = False
-                        order.force_order = False
-                        order.save()
-
-                update_salesman_collection()
-
-            if process_name == "COLLECTION" : 
-               
-               models.PushedCollection.objects.bulk_create([ models.PushedCollection(
-                   billing = billing_log, party_code = pc) for pc in billing.pushed_collection_ids ])
-            
-            if process_name == "REPORTS" and (order_objects is not None) : 
-                for order in order_objects :                     
-                    qs = models.Outstanding.objects.filter(party = order.party,beat = order.beat.name,balance__lte = -1)
-                    today_bill_count = models.Sales.objects.filter(party = order.party,beat = order.beat.name,
-                                                                   date = datetime.date.today()).count()
-                    print(order.party.name,today_bill_count,qs.count())
-                    if (today_bill_count == 0) and (qs.count() == 1) : 
-                        bill_value = order.bill_value()
-                        outstanding_bill = qs.first()
-                        outstanding_value = -outstanding_bill.balance
-                        print(order.party.name , bill_value , outstanding_value)
-                        if bill_value < 200 : continue
-                        
-                        max_outstanding_day =  (today - outstanding_bill.date).days
-                        max_collection_day = models.Collection.objects.filter(party = order.party , date = today).aggregate(date = Max("bill__date"))["date"]
-                        max_collection_day = (today - max_collection_day).days if max_collection_day else 0   
-                        if (max_collection_day > 21) or (max_outstanding_day >= 21): 
-                            continue 
-
-                        if (bill_value <= 500) or (outstanding_value <= 500):
-                            order.release = True 
-                            order.save()
-                            print(order.party.name , " release" )
-                    
-            if process_name == "DELIVERY" and billing.bills : 
-                billing_log.start_bill_no = billing.bills[0]
-                billing_log.end_bill_no = billing.bills[-1]
-                billing_log.bill_count = len(billing.bills)
-                billing_log.save()
-
-            obj.status = 1
-
+            process()              
         except Exception as e :
             traceback.print_exc()
             billing_log.error = str(traceback.format_exc())
-            obj.status = 3
-        
-        end_time = time.time()
-        time_taken = end_time - start_time
-        obj.time = round(time_taken,2)
-        obj.save()
+            billing_failed = True 
 
-        if obj.status == 3 : 
-            billing_log.end_time = datetime.datetime.now() 
-            billing_log.status = 3 
-            billing_log.save()
-            billing_lock.release()
-            return 
+        process_obj.status = (BillingStatus.Failed if billing_failed else  BillingStatus.Success)
+        end_time = time.time()
+        process_obj.time = round(end_time - start_time,2)
+        process_obj.save()
+
+        if billing_failed :  break 
         
     billing_log.end_time = datetime.datetime.now() 
-    billing_log.status = 1 
+    billing_log.status = BillingStatus.Failed if billing_failed else  BillingStatus.Success
     billing_log.save()
     billing_lock.release()
 
-def start(request) :
-    if not billing_lock.acquire(blocking=False) : 
-        return False
-    ## Neccesary to create the billing_log before sending response , as the creditlock table depends on the latest billing
-    billing_log = models.Billing(start_time = datetime.datetime.now(), status = 2)
-    billing_log.save()
-    for process_name in billing_process_names :
-        models.ProcessStatus(billing = billing_log,process = process_name,status = 0).save()    
-    thread = threading.Thread( target = run_billing_process , args = (billing_log,dict(request.POST),) )
-    thread.start() 
-    return True 
-
-def get_bill_statistics(request) -> list : 
-
-    class ProcessStatusAdmin(admin.ModelAdmin):
-        actions = None
-        ordering = ("id",)
-        
-        def get_queryset(self, request):
-            qs = super().get_queryset(request)
-            last_process = qs.last()
-            return qs.filter(billing = last_process.billing) if last_process else qs 
-        
-        @admin.display(description="")
-        def colored_status(self,obj):
-            class_name = ["unactive","green","blink","red"][obj.status]
-            return format_html(f'<span class="{class_name} indicator"></span>')
-
-        def time(obj):
-            return (f"{obj.time} SEC") if obj.time is not None else '-'
-        
-        list_display = ["colored_status","process","time"]
-            
-    ## Billing Statistics Admin (Abstract class)
-    class BillStatisticsAdmin(admin.ModelAdmin):
-        actions = None
-        list_display = ["type","count"]
-        ordering = ["id"]
-
-    class LastBillStatisticsAdmin(BillStatisticsAdmin):
-         def get_queryset(self, request) :
-            return super().get_queryset(request).filter( type__contains = "LAST" )
-
-    class TodayBillStatisticsAdmin(BillStatisticsAdmin):
-        def get_queryset(self, request) :
-            return super().get_queryset(request).exclude( type__contains = "LAST" )
-
-    today = datetime.date.today()
-
-    sales_qs = models.Sales.objects.filter(date  = today,type = "sales").exclude(beat__contains = "WHOLE").annotate(
-        bill_count = Count("inum") ,  start_bill_no = Max("inum") , end_bill_no = Min("inum") 
-    )
-
-    today_stats |= models.Billing.objects.filter(start_time__gte = today).aggregate( 
-        success = Count("status",filter=Q(status = 1)) , failed = Count("status",filter=Q(status = 3))
-    )
-
-    last_stats = models.Billing.objects.filter(start_time__gte = today).order_by("-start_time").first()
-
-    if last_stats is not None : 
-        stats = {   "LAST BILLS COUNT" : last_stats.bill_count or 0,"LAST COLLECTION COUNT" : last_stats.collection.count() ,  
-                    "LAST BILLS" : f'{last_stats.start_bill_no or ""} - {last_stats.end_bill_no or ""}', 
-                    "LAST STATUS" : ["DID NOT START","SUCCESS","ONGOING","ERROR"][last_stats.status] , 
-                    "LAST TIME" : f'{last_stats.start_time.strftime("%H:%M:%S")}' }
-    else : 
-        stats = {"LAST BILLS COUNT" : 0 ,"LAST COLLECTION COUNT" : 0 , "LAST BILLS" : "-",  "LAST STATUS" : "-" }
-    
-    stats |= { "TODAY BILLS COUNT" : today_stats["bill_count"] , "TODAY COLLECTION COUNT" : today_stats["collection_count"] , 
-    "TODAY BILLS" : f'{today_stats["bills_start"]} - {today_stats["bills_end"]}'  ,"SUCCESSFULL" : today_stats["success"] , 
-    "FAILURES" : today_stats["failed"] }
-    
-    models.BillStatistics.objects.all().delete()
-    models.BillStatistics.objects.bulk_create([ models.BillStatistics(type = k,count = str(v)) for k,v in stats.items() ])
-
-    tables = [0,0,0] 
-    tables[0] = LastBillStatisticsAdmin(models.BillStatistics,admin_site).get_changelist_instance(request)
-    tables[0].formset = None
-    tables[1] = ProcessStatusAdmin(models.ProcessStatus,admin_site).get_changelist_instance(request)
-    tables[1].formset = None   
-    tables[2] = TodayBillStatisticsAdmin(models.BillStatistics,admin_site).get_changelist_instance(request)
-    tables[2].formset = None
-    return tables 
-
-def get_last_billing() : 
-    billing_qs = models.Billing.objects.all().order_by("-start_time")
+def get_last_billing() :
+    billing_qs =  models.Billing.objects.filter(start_time__gte = datetime.date.today()).order_by("-start_time") 
     last_billing = billing_qs.first()      
     if last_billing : 
-        order_status = models.ProcessStatus.objects.filter(billing = last_billing,process = "ORDER").first()
-        if order_status and (order_status.status in [1,3]) :  pass
+        order_status = models.BillingProcessStatus.objects.filter(billing = last_billing,process = "ORDER").first()
+        if order_status and (order_status.status in [BillingStatus.Success,BillingStatus.Failed]) :  pass
         else : 
             if billing_qs.count() > 1 : 
                 last_billing = billing_qs[1]
     return last_billing
 
+Permission = Enum("Permission","add delete change")
 
-class ChangeOnly() : 
-    def has_change_permission(self, request, obj=None):
-        return True    
-    def has_add_permission(self, request,obj = None):
-        return False
-    def has_delete_permission(self, request, obj=None):
-        return False
+class ModelPermission() : 
     
-class ReadOnly() : 
-    def has_add_permission(self, request,obj = None):
-        return False
-    def has_change_permission(self, request, obj=None):
-        return False
-    def has_delete_permission(self, request, obj=None):
-        return False
+    permissions = []
 
-class CustomAdminModel(admin.ModelAdmin) : 
+    def has_add_permission(self, request,obj = None):
+        return Permission.add in self.permissions
+
+    def has_change_permission(self, request, obj=None):
+        return Permission.change in self.permissions
+    
+    def has_delete_permission(self, request, obj=None):
+        return Permission.delete in self.permissions
+
+class CustomAdminModel(ModelPermission,admin.ModelAdmin) : 
+    
     show_on_navbar = True
+    permissions = []
+    custom_views:list[tuple[str,str|Callable]] = []
 
     def __init__(self, model, admin_site):
         super().__init__(model, admin_site)
         self.custom_admin_urls = []
 
-    def add_custom_url(self,url,function,name) : 
-        info = self.opts.app_label, self.opts.model_name
-        viewname = f"{'%s_%s_' % info}{name}"
-        self.custom_admin_urls.append(path(url, self.admin_site.admin_view(function), name=viewname))
-
-    def get_urls(self):
-        urls = super().get_urls()
-        return self.custom_admin_urls + urls
-     
     def save_changelist(self,request) :
         """Safe Work Around to Only save changelist forms (even works with actions, it doesnt trigger actions)""" 
         original_post = request.POST.copy()
@@ -415,9 +374,16 @@ class CustomAdminModel(admin.ModelAdmin) :
         super().changelist_view( request )
         request._set_post(original_post)
 
-class BaseOrderAdmin(CustomAdminModel,ChangeOnly) :   
-
-    class OrderProductsInline(ReadOnly,admin.TabularInline) : 
+    def get_urls(self) :
+        urls =  super().get_urls()
+        custom_urls = [ path(f'{view_name.rstrip("/")}/', 
+                             self.admin_site.admin_view( getattr(self,view_fn) if isinstance(view_fn,str) else view_fn ), name=view_name.split("/")[0]) 
+                             for view_name , view_fn in self.custom_views ] ## Supports viewname/<str:param>
+        return custom_urls + urls 
+    
+class BaseOrderAdmin(CustomAdminModel) :   
+    
+    class OrderProductsInline(ModelPermission,admin.TabularInline) : 
         model = models.OrderProducts
         show_change_link = True
         verbose_name_plural = "products"
@@ -437,7 +403,7 @@ class BaseOrderAdmin(CustomAdminModel,ChangeOnly) :
     
     def coll(self,obj) : 
         today = datetime.date.today() 
-        coll = [  f"{round(coll.amt)}*{(today - coll.bill.date).days}"
+        coll = [  f"{round(coll.amt or 0)}*{(today - coll.bill.date).days}"
                  for coll in models.Collection.objects.filter(party = obj.party , date = today).all() ]
         return "/ ".join(coll)
     
@@ -449,9 +415,9 @@ class BaseOrderAdmin(CustomAdminModel,ChangeOnly) :
     def lines(self,obj) : 
         return len([ product for product in obj.products.all() if product.allocated != product.quantity])
     
+    @admin.display(boolean=True)
     def partial(self,obj) :
         return obj.partial()
-    partial.boolean = True  
 
     def cheque(self,obj) : 
         qs = models.SalesmanCollection.objects.filter(time__gte = datetime.date.today()).filter(bills__inum__party = obj.party)
@@ -472,9 +438,55 @@ class BaseOrderAdmin(CustomAdminModel,ChangeOnly) :
     def delete_orders(self, request, queryset) : 
         queryset.update(delete = True)
 
-class MyActionForm(forms.Form):
-        custom_field = forms.CharField(max_length=100, label='Enter Value')
+class BaseProcessStatusAdmin(CustomAdminModel) : 
+    process_names = []
+    process_logs = []
+    
+    actions = None
+    ordering = ("id",)
+    class Media:
+            css = { 'all': ('admin/css/process_status.css',) }
 
+    @admin.display(description="")
+    def colored_status(self,obj):
+        print(obj.status)
+        class_name = ["unactive","green","blink","red"][obj.status]
+        return format_html(f'<span class="{class_name} indicator"></span>')
+    
+    def time(self):
+        return (f"{self.time} SEC") if self.time is not None else '-'
+
+    def process(self) : 
+        return self.process.upper().replace("_"," ") # type: ignore
+    
+    list_display = ["colored_status",process,time]
+
+    def create_logs(self) :
+        self.model.objects.all().delete()
+        self.process_logs = []
+        for process_name in self.process_names : 
+            process = self.model(process = process_name , status = ProcessStatus.NotStarted)
+            self.process_logs.append(process)
+            process.save()  
+
+    def run_processes(self,processes) : 
+        for process_name,process_log,process in zip(self.process_names,self.process_logs,processes) : 
+            process_log.status = ProcessStatus.Started
+            process_log.save()
+            start_time = time.time()
+            process_failed = False 
+            try :
+                process()
+                process_failed = False
+            except Exception as e :
+                process_failed = True
+                print(f"Error in {self.model} - {process_name} process : {e}")
+
+            process_log.status = (ProcessStatus.Failed if process_failed else  ProcessStatus.Success)
+            end_time = time.time()
+            process_log.time = round(end_time - start_time,2)
+            process_log.save()
+            
 
 ## Billing Admin
 class BillingAdmin(BaseOrderAdmin) :   
@@ -484,37 +496,82 @@ class BillingAdmin(BaseOrderAdmin) :
     list_display = ["release","party","lines","value","OS","coll","salesman","beat","phone","delete","cheque"] 
     list_editable = ["release","delete"]
     ordering = ["-release","salesman"]
+    actions = None
+    permissions = [Permission.change]
 
-    class CustomInputFilter(admin.SimpleListFilter):
-        title = 'Custom Filter'
-        parameter_name = 'custom_input'
+    def get_bill_statistics(self,request:HttpRequest) -> list[ChangeList]: 
 
-        def lookups(self, request, model_admin):
-            return [("a","a")]
+        class BillingProcessStatusAdmin(BaseProcessStatusAdmin) :
+             def get_queryset(self, request):
+                 qs = super().get_queryset(request)
+                 last_process = qs.last()
+                 return qs.filter(billing = last_process.billing) if last_process else qs 
+                        
+        ## Billing Statistics Admin (Abstract class)
+        class BillStatisticsAdmin(admin.ModelAdmin):
+            actions = None
+            list_display = ["type","count"]
+            ordering = ["id"]
 
-        def queryset(self, request, queryset):
-            value = self.value()  # Get the input value
-            if value:
-                return queryset.filter(custom_field__icontains=value)
-            return queryset
+        class LastBillStatisticsAdmin(BillStatisticsAdmin):
+            def get_queryset(self, request: HttpRequest) -> QuerySet[models.BillStatistics]:
+                return super().get_queryset(request).filter(type__contains="LAST")
 
-        def choices(self, changelist):
-        # Override choices to return only the input box, no <a> tag
-            return [{
-            'query_string': '',
-            'display': mark_safe('<input type="text" name="custom_input" value="{}" />'.format(self.value() or ''))
-            }]
-    
-    list_filter = (CustomInputFilter,"beat")
+        class TodayBillStatisticsAdmin(BillStatisticsAdmin):
+            def get_queryset(self, request: HttpRequest) -> QuerySet[models.BillStatistics]:
+                return super().get_queryset(request).exclude(type__contains="LAST")
+
+        today = datetime.date.today()
+
+        today_stats = models.Sales.objects.filter(date  = today,type = "sales").exclude(beat__contains = "WHOLE").aggregate(
+            bill_count = Count("inum") ,  start_bill_no = Max("inum") , end_bill_no = Min("inum") 
+        )
+
+        today_stats |= models.Billing.objects.filter(start_time__gte = today).aggregate( 
+            success = Count("status",filter=Q(status = BillingStatus.Success)) , failures = Count("status",filter=Q(status = BillingStatus.Failed))
+        )
+
+        last_stats = models.Billing.objects.filter(start_time__gte = today).order_by("-start_time").first() or models.Billing(status = BillingStatus.NotStarted)
+
+        stats =   { "TODAY BILLS COUNT" : today_stats["bill_count"] , 
+                    "TODAY BILLS" : f'{today_stats["start_bill_no"]} - {today_stats["end_bill_no"]}' ,
+                    "SUCCESS" : today_stats["success"] , "FAILURES" : today_stats["failures"] ,
+                    "LAST BILLS COUNT" : last_stats.bill_count or "-" , "LAST COLLECTION COUNT" : last_stats.collection.count() if last_stats.pk else "-" ,   # type: ignore
+                    "LAST BILLS" : f'{last_stats.start_bill_no or ""} - {last_stats.end_bill_no or ""}', 
+                    "LAST STATUS" :  BillingStatus(last_stats.status).name.upper() , 
+                    "LAST TIME" : f'{last_stats.start_time.strftime("%H:%M:%S") if last_stats.start_time else "-"}' }
+        
+
+        models.BillStatistics.objects.all().delete()
+        models.BillStatistics.objects.bulk_create([ models.BillStatistics(type = type,count = str(value)) for type,value in stats.items() ])
+
+        admin_models = ((LastBillStatisticsAdmin,models.BillStatistics),(BillingProcessStatusAdmin,models.BillingProcessStatus),(TodayBillStatisticsAdmin,models.BillStatistics))
+        tables = [ admin(model,admin_site).get_changelist_instance(request) for admin,model in admin_models ]
+        for table in tables : table.formset = None 
+
+        return tables 
+
+    def start(self,billing_form:forms.Form) :
+
+
+        if not billing_lock.acquire(blocking=False) : 
+            return False
+        ## Neccesary to create the billing_log before sending response , as the creditlock table depends on the latest billing
+        billing_log = models.Billing(start_time = datetime.datetime.now(), status = 2,date = billing_form.cleaned_data.get("date",datetime.date.today()) )
+        billing_log.save()
+        for process_name in billing_process_names :
+            models.BillingProcessStatus(billing = billing_log,process = process_name,status = 0).save()    
+        thread = threading.Thread( target = run_billing_process , args = (billing_log,billing_form,) )
+        thread.start() 
+        return True 
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         qs = qs.filter(creditlock=True) 
-        billing_qs = models.Billing.objects.all().order_by("-start_time")
+        billing_qs = models.Billing.objects.filter(start_time__gte = datetime.datetime.now()  - datetime.timedelta(minutes=30)).order_by("-start_time")
         last_billing = billing_qs.first()      
-        # billings = list(models.Billing.objects.filter(start_time__gte = datetime.datetime.now() - datetime.timedelta(minutes=30)))
         if last_billing : 
-            order_status = models.ProcessStatus.objects.filter(billing = last_billing,process = "ORDER").first()
+            order_status = models.BillingProcessStatus.objects.filter(billing = last_billing,process = "ORDER").first()
             if order_status and (order_status.status in [1,3]) :  pass
             else : 
                 if billing_qs.count() > 1 : 
@@ -525,312 +582,91 @@ class BillingAdmin(BaseOrderAdmin) :
     
     def changelist_view(self, request, extra_context=None): 
          ## This attribute says get_queryset function whether to filter the creditlocks only for last billing (or) all billing
-        today = datetime.date.today()
         INF_TIME = 1e7
-        Actions = Enum("Actions","start refresh quit")
+        Actions = Enum("Actions",(("Start","start"),("Refresh","refresh"),("Quit","quit")))
 
         class BillingForm(forms.Form) : 
             max_lines = forms.IntegerField(initial=100,  widget=forms.TextInput(attrs={'placeholder': 'Maximum Lines'}))
             time_interval = forms.IntegerField(initial=10, widget=forms.TextInput(attrs={'placeholder': 'Time Interval'}))
-            action = forms.ChoiceField(choices=Actions.__members__.items(),initial=Actions.quit.name)
-            def clean(self):
-                cleaned_data = super().clean()
-                cleaned_data["action"] = Actions[cleaned_data["action"]]
-                return cleaned_data 
+            action = forms.TypedChoiceField(choices=list((action.value, action.name) for action in Actions), initial=Actions.Quit.name,coerce=Actions)
+            date = forms.DateField(required=False,initial=datetime.date.today(), widget=forms.DateInput(attrs={'placeholder': 'Bill Date','type' : 'date'}))
+            einvoice = forms.BooleanField(required=False,initial=True,label="E-Invoice")
+
         
         next_action_time_interval = INF_TIME
-        next_action = Actions.quit 
+        next_action = Actions.Quit 
 
         if request.method == "POST" : 
             form = BillingForm(request.POST)
             if form.is_valid() : 
                 curr_action = form.cleaned_data["action"]
-                if (curr_action == Actions.start) or (curr_action == Actions.quit) : self.save_changelist(request)
+                if (curr_action == Actions.Start) or (curr_action == Actions.Quit) : self.save_changelist(request)
 
-                if curr_action == Actions.start : 
-                    # start(request)
-                    next_action = Actions.refresh 
-                if curr_action == Actions.refresh : 
-                    next_action = Actions.start if billing_lock.locked() else Actions.refresh
+                if curr_action == Actions.Start : 
+                    self.start(billing_form = form)
+                    next_action = Actions.Refresh 
+
+                if curr_action == Actions.Refresh : 
+                    next_action = Actions.Refresh if billing_lock.locked() else Actions.Start
                 
-                action_time_map = { Actions.start : form.cleaned_data["time_interval"] * 60 , Actions.refresh : 5 , Actions.quit : INF_TIME }
+                action_time_map = { Actions.Start : form.cleaned_data["time_interval"] * 60 , Actions.Refresh : 5 , Actions.Quit : INF_TIME }
                 next_action_time_interval = action_time_map[ next_action ] * 1000 
         else : 
             form = BillingForm()
 
-        tables = get_bill_statistics(request) 
-
+        tables = self.get_bill_statistics(request) 
         return super().changelist_view( request , extra_context={ "title" : "" ,"tables" : tables ,  "form" : form ,  
-        "next_action_time_interval" : next_action_time_interval , "next_action" : next_action.name  }) 
+        "next_action_time_interval" : next_action_time_interval , "next_action" : next_action.value  })  # type: ignore
 
-
-   
-
-class OrdersAdmin(ReadOnly,BaseOrderAdmin) :
+class OrdersAdmin(BaseOrderAdmin) :
     
     list_display_links = ["order_no"]
     list_display =  ["partial","order_no","party","lines","value","OS","coll","salesman","beat","creditlock","delete","phone"] 
     ordering = ["place_order"]
     actions = ["force_order","delete_orders"]
 
-    actions = ['custom_action']
+    custom_filter_functions = {
+     'less_than_200':  lambda qs :  qs.annotate(bill_value_field = Sum(F('products__quantity') * F('products__rate'))).filter(
+                                                bill_value_field__lt = 200).order_by("bill_value_field") , 
+     'less_than_10_lines' :  lambda qs : qs.annotate(lines_count = Count(F('products'))).filter(lines_count__lt = 10) ,
+     'already_billed' :  lambda qs : qs.filter(order_no__in = [ order.order_no for order in qs if order.partial() ]) 
+     } 
 
-    
-    def custom_action(self, request, queryset):
-        form = None
-        if 'apply' in request.POST:
-            form = MyActionForm(request.POST)
-            if form.is_valid():
-                # Perform action with input data
-                custom_value = form.cleaned_data['custom_field']
-                queryset.update(custom_field=custom_value)
-                self.message_user(request, "Action applied successfully!")
-                return HttpResponseRedirect(request.get_full_path())
+    last_filter_functions = { 'last' : lambda qs : qs.filter(billing = get_last_billing()) } 
 
-        if not form:
-            form = MyActionForm()
-
-        return render(request, 'admin/custom_action.html', {'form': form, 'queryset': queryset})
-    custom_action.short_description = 'Custom Action with Input'
-
-    class CustomFilter(admin.SimpleListFilter):
-        title = 'filter'
-        parameter_name = 'filter'
-
-        def lookups(self, request, model_admin):
-            return (
-                ('less_than_200', 'less_than_200'),
-                ('less_than_10_lines', 'less_than_10_lines'),
-                ('already_billed', 'already_billed'),
-            )
-
-        def queryset(self, request, queryset):
-            today =datetime.date.today()
-            if self.value() == 'less_than_200':
-                return queryset.annotate(bill_value_field = Sum(F('products__quantity') * F('products__rate'))).filter(
-                        bill_value_field__lt = 200).order_by("bill_value_field")
-            if self.value() == 'less_than_10_lines':
-                return queryset.annotate(lines_count = Count(F('products'))).filter(
-                        lines_count__lt = 10)
-            if self.value() == 'already_billed':
-                return queryset.filter(order_no__in = [ order.order_no for order in queryset if order.partial() ])
-            return queryset
-
-    class LastFilter(admin.SimpleListFilter):
-        title = 'Billing'
-        parameter_name = 'billing'
-
-        def lookups(self, request, model_admin):
-            return (('last','last'),)
-
-        def queryset(self, request, queryset):
-            value = self.value()
-            if value == 'last':
-                last_billing = get_last_billing()
-                if last_billing is None : queryset.none()
-                return queryset.filter(billing = last_billing)
-            return queryset
-
-    list_filter = [CustomFilter,LastFilter]
+    list_filter = [create_simple_admin_filter("Filter","filter",custom_filter_functions), 
+                   create_simple_admin_filter("Billing","billing",last_filter_functions)]
 
     def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        if "/change" in request.path : return qs 
+        qs = super().get_queryset(request)     
         qs = qs.exclude(beat__name__contains = "WHOLE")
-        return qs.exclude(products__allocated = F("products__quantity")).distinct()
+        qs = qs.exclude(products__allocated = F("products__quantity")).distinct()
+        return qs 
     
     def changelist_view(self, request, extra_context=None):   
-        title_prefix = "Pending Values" if "place_order__exact=1" in request.get_full_path() else "Rejected Orders" 
-        title = f"{title_prefix} @ {get_last_billing().start_time.strftime('%d %B %Y, %I:%M:%S %p')}"
-        return super().changelist_view( request, extra_context={ "title" : title })
+        place_order = request.GET.get("place_order__exact",None)
+        title_prefix = { "1" : "Pending Values" , "0" : "Rejected Orders"}[place_order] if place_order else "All Orders"
+        title = f"{title_prefix} @ {(get_last_billing() or models.Billing()).start_time.strftime('%d %B %Y, %I:%M:%S %p')}"
+        return super().changelist_view(request, extra_context={ "title" : title })
 
-   
-class BankStatementUploadForm(forms.Form):
-    excel_file = forms.FileField()
+class OutstandingAdmin(CustomAdminModel) : 
 
-class BankCollectionForm(forms.ModelForm):
-    party  = forms.CharField(label="Party",required=False,disabled=True)
-    balance  = forms.DecimalField(max_digits=10, decimal_places=2, required=False, label='Outstanding',disabled=True)
-    class Meta:
-        model = models.BankCollection
-        fields = ["bill","party","balance","amt"]
-        widgets = {
-             'bill': dal.autocomplete.ModelSelect2(url='billautocomplete') ,  
-             "amt" : forms.TextInput()   ,
-        }
-
-class BankCollectionInline(admin.TabularInline) : 
-    model = models.BankCollection
-    show_change_link = False
-    verbose_name_plural = "collection"
-    form = BankCollectionForm
-    extra = 1 
-    class Media:
-        js = ('admin/js/bank_inline.js',)
-
-class BankAdmin(CustomAdminModel,ChangeOnly) : 
-
-    change_list_template = "bank.html"
-    list_display = ["date","ref","desc","amt","saved","pushed"]
-    actions = ["push_collection","push_collection_static"]
-    readonly_fields = ["date","pushed","ref","desc","amt","bank","idx","id"]
-    inlines = [BankCollectionInline]
-    list_display_links = ["date","ref","desc","amt","pushed"] 
-    list_filter = ["pushed","date"]
-    search_fields = ["amt","desc"]
-
-    def saved(self,obj) : 
-        return bool(obj.collection.count() > 0)  
-    saved.boolean = True  
-    
-    @admin.action(description="Save without Push")
-    def push_collection_static(self, request, queryset) : 
-        queryset.update(pushed = True)
-
-    @admin.action(description="Push Collection")
-    def push_collection(self, request, queryset):
-        queryset = queryset.filter(pushed = False)
-        if not ('apply' in request.POST) :
-            chqs = list(queryset)
-            colls = [ coll for chq in chqs for coll in chq.collection.all() ]
-            if len(colls) == 0 : 
-                messages.warning(request,"No collections present for the selected cheques")
-                return redirect(request.path)
-            value = sum([ coll.amt for coll in colls ])
-            return render(request, 'admin/push_collection_confirmation.html', context={'items': queryset,
-                                                                            "total_chqs":len(chqs),"total_bills" : len(colls) , "amt" : value , 
-                                                                            'action_checkbox_name': admin.helpers.ACTION_CHECKBOX_NAME })
-        billing = Billing(None,None,None,None,None)
-        coll = billing.donwload_manual_collection()
-        manual_coll = []
-        bill_chq_pairs = []
-        for bank_obj in queryset.all() : 
-            for coll_obj in bank_obj.collection.all() :
-                bill_no  = coll_obj.bill_id 
-                row = coll[coll["Bill No"] == bill_no].copy()
-                row["Mode"] = ( "Cheque/DD"	if bank_obj.type == "cheque" else "Cheque/DD") ##Warning
-                row["Retailer Bank Name"] = "KVB 650"	
-                row["Chq/DD Date"]  = bank_obj.date.strftime("%d/%m/%Y")
-                row["Chq/DD No"] = chq_no = f"{bank_obj.date.strftime('%d%m')}{bank_obj.idx}".lstrip('0')
-                row["Amount"] = coll_obj.amt
-                manual_coll.append(row)
-                bill_chq_pairs.append((chq_no,bill_no))
-
-        manual_coll = pd.concat(manual_coll)
-        manual_coll["Collection Date"] = datetime.date.today()
-        print("manual collection :",manual_coll)
-
-        f = BytesIO()
-        manual_coll.to_excel(f,index=False)
-        f.seek(0)
-        res = billing.upload_manual_collection(f)
-
-        print("upload collection :",pd.read_excel(billing.download_file(res["ul"])).iloc[0] )
-
-        settle_coll = billing.download_settle_cheque()
-        settle_coll = settle_coll[ settle_coll.apply(lambda row : (str(row["CHEQUE NO"]),row["BILL NO"]) in bill_chq_pairs ,axis=1)].iloc[:1]
-        settle_coll["STATUS"] = "SETTLED"
-        f = BytesIO()
-        settle_coll.to_excel(f,index=False)
-        f.seek(0)
-        res = billing.upload_settle_cheque(f)
-        print("response collection :",pd.read_excel(billing.download_file(res["ul"])) )
-        queryset.update(pushed = True)
-        sync_ikea_report(billing.collection, CollectionInsert,models.Collection,{})
-
-    def changelist_view(self, request, extra_context=None):
-
-        if request.method == 'GET' :
-            if not check_last_sync(models.Sales,60*60) : 
-               billing = Billing()
-               sync_ikea_report(billing.sales_reg, SalesInsert,models.Sales,{"gst" : None,"permanent" : False})
-               sync_ikea_report(billing.crnote, AdjustmentInsert,models.Adjustment,{})
-            if not check_last_sync(models.Collection,60*10) : 
-               sync_ikea_report(Billing().collection, CollectionInsert,models.Collection,{})
-
-        form = BankStatementUploadForm()
-
-        if request.method == 'POST' and 'excel_file' in request.FILES:
-            form = BankStatementUploadForm(request.POST, request.FILES)
-            if form.is_valid():
-                excel_file = request.FILES['excel_file']
-                df = pd.read_excel(excel_file).rename(columns={"Txn Date":"date","Credit":"amt","Ref No./Cheque No.":"ref","Description":"desc"})
-                df["date"] = pd.to_datetime(df["date"])
-                df["idx"] = df.groupby("date").cumcount() + 1 
-                df = df[["date","ref","desc","amt","idx"]]
-                df["id"] = df["date"].dt.strftime("%d%m%Y") + df['idx'].astype(str)
-                df["date"] = df["date"].dt.date
-                df.amt = df.amt.astype(str).str.replace(",","").apply(lambda x  : float(x.strip()) if x.strip() else 0)
-                df["bank"] = "sbi"
-                bulk_raw_insert("bank",df,upsert=True)
-                messages.success(request, "Statement successfully uploaded")
-            else : 
-                messages.error(request, "Statement upload failed")
-            return redirect(request.path)
-
-        extra_context = extra_context or {}
-        extra_context['form'] = form
-        
-        return super().changelist_view(request, extra_context=extra_context | {"title" : ""})
-
-    def save_model(self, request, obj, form, change):
-        obj._save_deferred = True  # Flag to save it later in save_related()
-
-    def has_change_permission(self, request, obj=None):
-        return not (obj and (obj.pushed))
-        
-    def save_related(self, request, form, formsets, change):
-        bank_obj = form.instance 
-        total_amt = 0 
-        for formset in formsets:
-            if formset.model == models.BankCollection :
-                for inline_form in formset.forms:
-                    obj = inline_form.instance
-                    is_deleted = inline_form.cleaned_data.get('DELETE')
-                    if obj.amt and (not is_deleted):
-                        total_amt += obj.amt    
-
-        if abs(total_amt - bank_obj.amt) > 5 :  
-            messages.error(request,f"Cheque Value & Collection Value Mismatch \n Total value : {total_amt} , Cheque amt : {bank_obj.amt}")
-            formsets.clear()
-        else : 
-            if hasattr(form.instance, '_save_deferred') and form.instance._save_deferred:
-              super().save_model(request,bank_obj,form,change)    
-        super().save_related(request,form,formsets, change)
-    
-class OutstandingAdmin(CustomAdminModel,ReadOnly) : 
-    change_list_template = "outstanding.html"
+    change_list_template = "form_and_changelist.html"
     list_display = ["inum","party","beat","balance","phone","days"]
     today = datetime.date.today()
     ordering = ["date"]
+    search_fields = ["party__name","beat"]
+    days_filter = { f'>= {no_of_days} days': functools.partial(lambda no_of_days,qs: qs.filter(date__lte=datetime.date.today() - datetime.timedelta(days=no_of_days)) 
+                                                               ,no_of_days) for no_of_days in [14,21,28,30] }
     
-    
-    class DaysAgoListFilter(admin.SimpleListFilter):
-        title = 'Outstanding Days'
-        parameter_name = 'date_before_today'
+    list_filter = [ create_simple_admin_filter("Outstanding Days","days",days_filter) ]
+    custom_views = [("get-outstanding-report","get_outstanding_report")]
 
-        def lookups(self, request, model_admin):
-            return (
-                ('14_days', '>= 14 days'),
-                ('21_days', '>= 21 days'),
-                ('28_days', '>= 28 days'),
-                ('30_days', '>= 30 days'),
-            )
-
-        def queryset(self, request, queryset):
-            today =datetime.date.today()
-            if self.value() == '14_days':
-                return queryset.filter(date=today - datetime.timedelta(days=14))
-            elif self.value() == '21_days':
-                return queryset.filter(date=today - datetime.timedelta(days=21))
-            elif self.value() == '28_days':
-                return queryset.filter(date=today - datetime.timedelta(days=28))
-            elif self.value() == '30_days':
-                return queryset.filter(date=today - datetime.timedelta(days=30))
-            return queryset
-
-    list_filter = [DaysAgoListFilter]
-    
+    class OutstandingForm(forms.Form) : 
+            date = forms.DateField(required=False,initial=datetime.date.today(),widget=forms.DateInput(attrs={'type' : 'date'}))
+            Submit = submit_button("Download")
+            Action = reverse_lazy("admin:get-outstanding-report")
+            
     def phone(self,obj) : 
         return obj.party.phone
     
@@ -840,22 +676,50 @@ class OutstandingAdmin(CustomAdminModel,ReadOnly) :
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return super().get_queryset(request).filter(balance__lte = -1)
     
-    def changelist_view(self, request, extra_context=None):
-        # if all(check_all_last_sync(limit= 5*60)) :     
-        sync_all_reports(limit = 5*60)
-        return super().changelist_view(request, (extra_context or {})| {"title" : "Outstanding Report"})
+    def get_outstanding_report(self,request) : 
+        form = self.OutstandingForm(request.POST)
+        if not form.is_valid() : return 
+        date = form.cleaned_data.get("date",self.today)
+        day = date.strftime("%A").lower()
+        outstanding:pd.DataFrame = query_db(f"""select * from (
+        select salesman_name as salesman , (select name from app_party where party_id = code) as party , beat , inum as bill , 
+        (select -amt from app_sales where inum = app_outstanding.inum) as bill_amt , -balance as balance , 
+        (select phone from app_party where code = party_id) as phone , 
+        round(julianday('{date}') - julianday(date)) as days , 
+        days as weekday 
+        from app_outstanding left outer join app_beat on app_outstanding.beat = app_beat.name
+        where  balance <= -1 and beat not like '%WHOLESALE%' )
+        where days >= 28 or weekday like '%{day}%'
+        """,is_select = True)  # type: ignore
+        pivot_fn = lambda df : pd.pivot_table(df,index=["salesman","beat","party","bill"],values=['balance',"days","phone"],aggfunc = "first") # type: ignore
+        output = BytesIO()
+        writer = pd.ExcelWriter(output, engine='xlsxwriter')
+        pivot_fn(outstanding[ (outstanding.days >= 21) & outstanding.weekday.str.contains(day) ]).to_excel(writer, sheet_name='21 Days')
+        pivot_fn(outstanding[outstanding.days >= 28]).to_excel(writer, sheet_name='28 Days')
+        outstanding.sort_values("days",ascending=False).to_excel(writer, sheet_name='ALL BILLS',index=False)
+        writer.close()
+        output.seek(0)
+        response = HttpResponse(output.getvalue(), content_type='application/vnd.ms-excel')
+        response['Content-Disposition'] = 'attachment; filename="' + f"outstanding_{date}.xlsx" + '"'
+        return response 
 
+    def changelist_view(self, request, extra_context=None):    
+        TIME_LIMIT = 10*60 
+        sync_reports(limits={"sales":TIME_LIMIT,"collection":TIME_LIMIT,"adjustment":TIME_LIMIT})
+        return super().changelist_view(request, (extra_context or {})| {"title" : "Outstanding Report", "form" : self.OutstandingForm() })
+    
+class SalesCollectionAdmin(CustomAdminModel) :
 
-class SalesCollectionBillInline(ReadOnly,admin.TabularInline) : 
-    model = models.SalesmanCollectionBill
-    verbose_name_plural = "bills"
-    list_display = ["inum","amt"]
- 
-class SalesCollectionAdmin(CustomAdminModel,ReadOnly) :
-
+    class SalesCollectionBillInline(ModelPermission,admin.TabularInline) : 
+        model = models.SalesmanCollectionBill
+        verbose_name_plural = "bills"
+        list_display = ["inum","amt"]
+    
     list_display = ["party","cheque_date","amt","salesman","time"]
-    list_filter = ["time","salesman"]
-    ordering = ["salesman"]
+    date_filter_fn = { key: functools.partial(lambda days,qs: qs.filter(time__date = (datetime.date.today() - datetime.timedelta(days=days))) , no_of_days) 
+                                for key,no_of_days in [("Today",0),("Yesterday",1),("Day Before Yesterday",2)] }
+    list_filter = [create_simple_admin_filter("Collection Entry Time","time",date_filter_fn),"salesman"]
+    ordering = ["salesman"]    
     inlines = [SalesCollectionBillInline]
     
     def party(self,obj) : 
@@ -867,45 +731,107 @@ class SalesCollectionAdmin(CustomAdminModel,ReadOnly) :
     
     def has_delete_permission(self, request, obj=None):
         return True
-   
-    def get_changelist(self, request: HttpRequest, **kwargs: Any) -> Type[ChangeList]:
-        update_salesman_collection()
-        return super().get_changelist(request, **kwargs)
+    
+    def delete_queryset(self,request,queryset) : 
+        for obj in list(queryset) : 
+            obj.delete()
 
-class PrintAdmin(CustomAdminModel,ReadOnly) :
-    list_display = ["bill","party","salesman","type","time"]
-    ordering = ["type","-bill"]
-    actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet"]
-
-    class AlreadyPrintedFilter(admin.SimpleListFilter):
-        title = 'Already Printed'
-        parameter_name = 'printed'
-
-        def lookups(self, request, model_admin):
-            return (("not_printed","Not Printed"),)
-
-        def queryset(self, request, queryset):
-            if self.value() == 'not_printed':
-                return queryset.filter(time__isnull=True)
-            return queryset
-
-    class SalesmanFilter(admin.SimpleListFilter):
-        title = 'Salesman'
-        parameter_name = 'salesman'
-
-        def lookups(self, request, model_admin):
-            salesmans = list(models.Beat.objects.all().values_list("salesman_name",flat=True).distinct())
-            return zip(salesmans,salesmans)
-
-        def queryset(self, request, queryset):
-            if self.value() is None : return queryset 
-            beats = list(models.Beat.objects.filter(salesman_name = self.value()).values_list("name",flat=True).distinct())
-            return queryset.filter(bill__beat__in = beats)
+    def changelist_view(self, request: HttpRequest, extra_context = {}) -> TemplateResponse:
+        models.SalesmanCollection.fetch_from_mongo()
+        return super().changelist_view(request, extra_context = extra_context | {"title" : ""}) # type: ignore
         
-    list_filter = [AlreadyPrintedFilter,SalesmanFilter]
+class PrintAdmin(CustomAdminModel) :
+    list_display = ["bill","party","salesman","type","time","einvoice","ctin"]
+    ordering = ["-bill"]
+    actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet","only_einvoice"]
+    custom_views = [("retail","changelist_view"),("wholesale","changelist_view"),]
+
+    class PrintType(Enum):
+        FIRST_COPY = "first_copy"
+        SECOND_COPY = "second_copy"
+        LOADING_SHEET = "loading_sheet"
+        LOADING_SHEET_SALESMAN = "loading_sheet_salesman"
+
+    PRINT_ACTION_CONFIG = {
+        PrintType.FIRST_COPY: {
+            'create_bill': lambda billing, group, context: billing.Download(bills=group,pdf=True, txt=False),
+            'file_name': "bill.pdf",
+            'update_fields': {'type': PrintType.FIRST_COPY.value} ,
+            'allow_printed'  : False , 
+        },
+        PrintType.SECOND_COPY: {
+            'create_bill': lambda billing, group, context: billing.Download(bills=group,pdf=False, txt=True) and secondarybills.main('bill.txt', 'bill.docx'),
+            'file_name': "bill.docx" ,
+            'allow_printed'  : True , 
+        },
+        PrintType.LOADING_SHEET: {
+            'create_bill': lambda billing, group, context: loading_sheet.create_pdf(billing.loading_sheet(group), header=False),
+            'file_name': "loading.pdf", 
+            'allow_printed'  : True , 
+        },
+        PrintType.LOADING_SHEET_SALESMAN: {
+            'create_bill': lambda billing, group, context: loading_sheet.create_pdf(billing.loading_sheet(group), 
+                                                                            header=True, 
+                                                                            salesman=context.get('salesman', '')),
+            'file_name': "loading.pdf",
+            'get_context': lambda queryset: {
+                'salesman': queryset.values_list('bill__beat', flat=True).distinct()[0] if queryset.exists() else ''
+            },
+            'update_fields': {'type': PrintType.LOADING_SHEET.value} , 
+            'allow_printed'  : False , 
+        }
+    }
+
+
+    # Function to filter the bills for a given salesman 
+    @staticmethod
+    def get_salesman_bills(salesman,queryset):
+            beats = list(models.Beat.objects.filter(salesman_name = salesman).values_list("name",flat=True).distinct())
+            return queryset.filter(bill__beat__in = beats)
+    
+    def get_list_filter(self, request): # type: ignore
+        return [
+            create_simple_admin_filter("Printed ?", "printed", {
+                'Not Printed': lambda qs: qs.filter(time__isnull=True)
+            }),
+            create_simple_admin_filter("Salesman", "salesman", {
+                salesman: functools.partial(self.get_salesman_bills, salesman)
+                for salesman in models.Beat.objects.all().values_list("salesman_name", flat=True).distinct()
+            })
+        ]
+    
+    def date(self,obj):
+        return obj.bill.date
+    
+    def ctin(self,obj):
+        return obj.bill.ctin
+    
+    @admin.display(boolean=True)
+    def einvoice(self,obj):  
+        return bool(obj.bill.ctin is None) or hasattr(obj.bill,"einvoice")
     
     def salesman(self,obj) :
         return models.Beat.objects.filter(name = obj.bill.beat).first().salesman_name
+
+    def party(self,obj) : 
+        return obj.bill.party.name
+    
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        qs = super().get_queryset(request).filter(bill__date = datetime.date.today()) #change
+        if request.resolver_match : 
+            view_name = request.resolver_match.view_name
+            if view_name.endswith("retail") : return qs.exclude(bill__beat__contains = "WHOLESALE")
+            if view_name.endswith("wholesale") : return qs.filter(bill__beat__contains = "WHOLESALE")
+        return qs 
+ 
+    def changelist_view(self, request: HttpRequest, extra_context = {}) -> TemplateResponse:
+        title = "All Bills"
+        if request.resolver_match : 
+            view_name = request.resolver_match.view_name
+            if view_name.endswith("retail") : title = "Retail Bills"
+            if view_name.endswith("wholesale") : title = "Wholesale Bills"
+        bill_count = self.get_queryset(request).filter(time__isnull = True).count()
+        return super().changelist_view(request, extra_context | {"title" : f"{title} - {bill_count} Not Printed" })
 
     def group_consecutive_bills(self,bills):
 
@@ -940,104 +866,451 @@ class PrintAdmin(CustomAdminModel,ReadOnly) :
 
         return groups
 
-    def print_bills(self,request,billing: Billing,queryset,type) : 
-        groups = self.group_consecutive_bills([ bill.bill_id for bill in queryset ])
-        for group in groups : 
-            billing.bills = group 
-            if type == "first_copy" : billing.Download(pdf = True,txt = False)
-            if type == "second_copy" : billing.Download(pdf = False,txt = True)
-            if type == "loading_sheet" :
-                loading_sheet.create_pdf(billing.loading_sheet(group) , header = False)
-            if type == "loading_sheet_salesman" :
-                beats =  list(queryset.values_list("bill__beat",flat=True))
-                salesmans = list(models.Beat.objects.filter(name__in = beats).values_list("salesman_name",flat=True).distinct())
-                salesman =  salesmans[0] if len(salesmans) == 1 else ""
-                loading_sheet.create_pdf(billing.loading_sheet(group) , header = True,salesman=salesman)
-                
+    def handle_einvoice_upload(self,request,einv_qs):
+        # Aggregate date range for the invoices
+        billing = Billing()
+        dates = einv_qs.aggregate(fromd=Min("bill__date"), tod=Max("bill__date"))
+        from_date, to_date = dates["fromd"], dates["tod"]
 
-            fname_map = {"first_copy" : "bill.pdf","second_copy" : "bill.docx",
-                           "loading_sheet_salesman":"loading.pdf","loading_sheet":"loading.pdf"}
-            status = billing.Printbill(print_files = [ fname_map[type] , ])
-            status = True  #warning:
+        # Generate e-invoice JSON from Billing
+        inums = einv_qs.values_list("bill_id", flat=True)
+        bytesio = billing.einvoice_json(fromd=from_date, tod=to_date, bills=inums)
+        
+        if bytesio : 
+            json_str = bytesio.getvalue().decode('utf-8')  # Convert BytesIO to string
+            success, failures = Einvoice().upload(json_str)
+            failed_inums = failures.get("Invoice No", []).tolist()
+            if failures.shape[0]:
+                print(failures)
+                messages.error(request, f"E-Invoice upload failed for {failed_inums}\nThese bills will not be printed.")
+        else :
+            failed_inums = inums
+            messages.error(request, "No data generated for e-invoice upload.")
 
-            if status : 
-                if type == "first_copy" : queryset.update(type = "first_copy", time = datetime.datetime.now()) 
-                if type == "loading_sheet_salesman" : queryset.update(type = "loading_sheet", time = datetime.datetime.now()) 
+        # Process today's e-invoices
+        today_einvs_bytesio = BytesIO(Einvoice().get_today_einvs())
+        response = billing.upload_irn(today_einvs_bytesio)
 
-            link = format_html('<a href="/static/{}" target="_blank">{}</a>',fname_map[type],type.upper())
+        # Handle IRN upload failures
+        if not response["valid"]:
+            raise Exception(f"IRN Upload Failed: {response}")
 
-            if status :
-                messages.success(request,mark_safe(f"Succesfully printed {link} : {group[0]} - {group[-1]}"))
-            else : 
-                messages.error(request,mark_safe(f"Bills failed to print {link} : {group[0]} - {group[-1]}"))
+        # Process the successful e-invoices
+        einvoice_df = pd.read_excel(today_einvs_bytesio).rename(columns={
+            "Ack Date": "date",
+            "IRN": "irn",
+            "SignedQrCOde": "qrcode",
+            "Doc No": "bill_id"
+        })
 
-    def base_print_action(self, request, qs , type ) :
-        i = Billing()
-        type = defaultdict(lambda : False,type)
-        for print_type,is_true in type.items() : 
-            if is_true : 
-                if print_type in ["first_copy","loading_sheet_ssalesman"] : 
-                   if qs.filter(time__isnull = False).count() : 
-                       messages.warning(request,f"Bills are already printed for {print_type.upper()}")
+        einvoice_df = einvoice_df[["bill_id", "qrcode", "date", "irn"]]
 
-                   self.print_bills(request, i , qs.filter(time__isnull = True) , type = print_type)
+        # Bulk insert or update the e-invoice data
+        bulk_raw_insert("einvoice", einvoice_df, upsert=True)
+        
+        # Remove successfully processed invoices from the failed list
+        processed_bills = einvoice_df["bill_id"].values
+        failed_inums = list(set(failed_inums) - set(processed_bills))
+
+        return failed_inums
+
+    def print_bills(self, request, billing: Billing, queryset, print_type: PrintType):
+        
+        groups = self.group_consecutive_bills([bill.bill_id for bill in queryset])
+        
+        config = self.PRINT_ACTION_CONFIG[print_type]
+
+        for group in groups:
+            # Get additional context for the action (like salesman details if needed)
+            context = config.get('get_context', lambda qs: {})(queryset)
+
+            # Execute the create_bill action defined in the configuration
+            config['create_bill'](billing, group, context)
+
+            # Print the file
+            file_name = config['file_name']
+            status = billing.Printbill(bills = group,print_files=[file_name])
+            status = True  # placeholder
+
+            # Update the queryset if required by the action
+            if status and 'update_fields' in config:
+                queryset.update(**config['update_fields'], time=datetime.datetime.now())
+
+            # Generate the download link
+            link = hyperlink(f"/static/{file_name}",print_type.name.upper(),style="text-decoration:underline;color:blue;") 
+            if status:
+                messages.success(request, mark_safe(f"Successfully printed {link}: {group[0]} - {group[-1]}"))
+            else:
+                messages.error(request, mark_safe(f"Bills failed to print {link}: {group[0]} - {group[-1]}"))
+
+    def base_print_action(self, request, queryset, print_types):
+        einv_qs = queryset.filter(bill__ctin__isnull=False, bill__einvoice__isnull=True)
+        einv_count = einv_qs.count()
+        einvoice_service = Einvoice()
+
+        if 'confirm_action' in request.POST:
+            captcha = request.POST["captcha"].upper()
+            is_success , error = einvoice_service.login(captcha)
+            print(error)
+            if error : messages.error(request,f"Einvoice Login Failed : {error}")
+
+        if (einv_count == 0) or einvoice_service.is_logged_in():
+            if einv_count:
+                self.handle_einvoice_upload(request,einv_qs)
+
+            billing = Billing()
+            for print_type in print_types:
+                allow_already_printed = self.PRINT_ACTION_CONFIG[print_type]["allow_printed"]
+                if not allow_already_printed: 
+                    already_printed = queryset.filter(time__isnull=False) 
+                    if already_printed and already_printed.exists():
+                        messages.warning(request, f"Bills are already printed for {already_printed.values_list('bill_id', flat=True)}")
+                    self.print_bills(request, billing, queryset.filter(time__isnull=True), print_type)
                 else : 
-                   self.print_bills(request, i , qs , type = print_type)
-                 
+                    self.print_bills(request, billing, queryset, print_type)
+            return 
+
+        
+        captcha_img = einvoice_service.captcha()
+        img_base64 = base64.b64encode(captcha_img).decode('utf-8')
+        return render_confirmation_page("einvoice_login.html",request,queryset,{'image_data': img_base64})
+
     @admin.action(description="Both Copy")
-    def both_copy(self,request,queryset) : 
-        self.base_print_action(request,queryset,{"first_copy" : True,"second_copy" : True})
-    
+    def both_copy(self, request, queryset):
+        return self.base_print_action(request, queryset, [self.PrintType.FIRST_COPY, self.PrintType.SECOND_COPY])
+
     @admin.action(description="First Copy")
-    def first_copy(self,request,queryset) : 
-        self.base_print_action(request,queryset,{"first_copy" : True})
+    def first_copy(self, request, queryset):
+        return self.base_print_action(request, queryset, [self.PrintType.FIRST_COPY])
 
     @admin.action(description="Second Copy")
-    def second_copy(self,request,queryset) : 
-        self.base_print_action(request,queryset,{"second_copy" : True})
+    def second_copy(self, request, queryset):
+        return self.base_print_action(request, queryset, [self.PrintType.SECOND_COPY])
 
     @admin.action(description="Salesman Loading Sheet")
-    def loading_sheet_salesman(self,request,queryset) : 
-        self.base_print_action(request,queryset,{"loading_sheet_salesman" : True})
+    def loading_sheet_salesman(self, request, queryset):
+        return self.base_print_action(request, queryset, [self.PrintType.LOADING_SHEET_SALESMAN])
 
     @admin.action(description="Plain Loading Sheet")
-    def loading_sheet(self,request,queryset) : 
-        self.base_print_action(request,queryset,{"loading_sheet" : True})
+    def loading_sheet(self, request, queryset):
+        return self.base_print_action(request, queryset, [self.PrintType.LOADING_SHEET])
 
-    def party(self,obj) : 
-        return obj.bill.party.name
+    @admin.action(description="Only E-Invoice")
+    def only_einvoice(self, request, queryset):
+        return self.base_print_action(request, queryset, [])
     
-    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
-        return super().get_queryset(request).filter(bill__date = datetime.date.today())
+class BankAdmin(CustomAdminModel) : 
 
+    class BankCollectionInline(admin.TabularInline) : 
+        class BankCollectionForm(forms.ModelForm):
+            party  = forms.CharField(label="Party",required=False,disabled=True)
+            balance  = forms.DecimalField(max_digits=10, decimal_places=2, required=False, label='Outstanding',disabled=True)
+            class Meta:
+                model = models.BankCollection
+                fields = ["bill","party","balance","amt"]
+                widgets = {
+                    'bill': dal.autocomplete.ModelSelect2(url='/app/bank/billautocomplete') ,  
+                    "amt" : forms.TextInput()   ,
+                }
+                
+        model = models.BankCollection
+        show_change_link = False
+        verbose_name_plural = "collection"
+        form = BankCollectionForm
+        extra = 1 
+        class Media:
+            js = ('admin/js/bank_inline.js',)
+            
+    change_list_template = "form_and_changelist.html"
+    permissions = [Permission.change]
+    list_display = ["date","ref","desc","amt","saved","pushed"]
+    readonly_fields = ["date","pushed","ref","desc","amt","bank","idx","id"]
+    list_filter = ["pushed","date"]
+    search_fields = ["amt","desc"]
+    list_display_links = ["date","amt"]
 
-# class SalesAdmin(ReadOnlyModel,admin.ModelAdmin) : 
-#     list_display = ["inum","party","beat","amt","date","OS","days"]
-#     ordering = ["date"]
+    actions = ["push_collection","push_collection_static"]
+    inlines = [BankCollectionInline]
 
-#     def OS(self,obj) : 
-#         bills = list(models.OutstandingRaw.objects.filter(party_id = obj.party_id,beat = obj.beat,date__lt = obj.date).values_list("inum",flat=True))
-#         bills = models.OutstandingRaw.objects.filter(inum__in = bills,date__lte = obj.date).values('inum').annotate(bal = -Sum("amt"),
-#                         date = (obj.date - Min("date"))).exclude(bal__lt = 1)
+    ##Outstanding Bill autocomplete 
+    class BillAutocomplete(autocomplete.Select2QuerySetView):
+        def get_queryset(self):
+            qs = models.Outstanding.objects.all().filter(balance__lte = -1)
+            if self.q:
+                qs = qs.filter(Q(inum__icontains=self.q) | Q(party__name__icontains=self.q)) 
+            return qs
+    
+    custom_views = [("get-outstanding/<str:inum>","get_outstanding"),("billautocomplete",BillAutocomplete.as_view())]
         
-#         return "/".join([ f'{bill["bal"]}*{bill["date"].days}' for bill in bills ])
+    ##Custom view to support fetch outstanding in inlines 
+    def get_outstanding(self,request, inum):
+        try:
+            obj = models.Outstanding.objects.get(inum=inum.split("-")[0])
+            return JsonResponse({'balance': str(round(-obj.balance,2)) , 'party' : obj.party.name })
+        except models.Outstanding.DoesNotExist:
+            return JsonResponse({'balance': 0,'party': '-'})
 
-#     def days(self,obj) : 
-#         return (models.OutstandingRaw.objects.filter(inum = obj.inum).aggregate(date = Max("date"))["date"] - obj.date).days
+
+    @admin.display(boolean=True)    
+    def saved(self,obj) : 
+        return bool(obj.collection.count() > 0)  
+      
+    @admin.action(description="Save without Push")
+    def push_collection_static(self, request, queryset) : 
+        queryset.update(pushed = True)
+
+    @admin.action(description="Push Collection")
+    def push_collection(self, request, queryset):
+        queryset = queryset.filter(pushed = False)
+        if not ('confirm_action' in request.POST) :
+            chqs = list(queryset)
+            colls = [ coll for chq in chqs for coll in chq.collection.all() ]
+            if len(colls) == 0 : 
+                messages.warning(request,"No collections present for the selected cheques")
+                return redirect(request.path)
+            value = sum([ coll.amt for coll in colls ])
+            return render_confirmation_page('push_collection_confirmation.html',request,queryset,extra_context={ 
+                        "total_chqs":len(chqs),"total_bills" : len(colls) , "amt" : value , "show_objects" : True , "show_cancel_btn":  True ,
+            })
+
+          
+        sdf
+        billing = Billing()
+        coll:pd.DataFrame = billing.download_manual_collection() # type: ignore
+        manual_coll = []
+        bill_chq_pairs = []
+        for bank_obj in queryset.all() : 
+            for coll_obj in bank_obj.collection.all() :
+                bill_no  = coll_obj.bill_id 
+                row = coll[coll["Bill No"] == bill_no].copy()
+                row["Mode"] = ( "Cheque/DD"	if bank_obj.type == "cheque" else "Cheque/DD") ##Warning
+                row["Retailer Bank Name"] = "KVB 650"	
+                row["Chq/DD Date"]  = bank_obj.date.strftime("%d/%m/%Y")
+                row["Chq/DD No"] = chq_no = f"{bank_obj.date.strftime('%d%m')}{bank_obj.idx}".lstrip('0')
+                row["Amount"] = coll_obj.amt
+                manual_coll.append(row)
+                bill_chq_pairs.append((chq_no,bill_no))
+
+        manual_coll = pd.concat(manual_coll)
+        manual_coll["Collection Date"] = datetime.date.today()
+        print("Manual collection :",manual_coll)
+
+        f = BytesIO()
+        manual_coll.to_excel(f,index=False)
+        f.seek(0)
+        res = billing.upload_manual_collection(f)
+
+        print("Upload collection :",pd.read_excel(billing.download_file(res["ul"])).iloc[0] )
+
+        settle_coll:pd.DataFrame = billing.download_settle_cheque() # type: ignore
+        settle_coll = settle_coll[ settle_coll.apply(lambda row : (str(row["CHEQUE NO"]),row["BILL NO"]) in bill_chq_pairs ,axis=1)].iloc[:1]
+        settle_coll["STATUS"] = "SETTLED"
+        f = BytesIO()
+        settle_coll.to_excel(f,index=False)
+        f.seek(0)
+        res = billing.upload_settle_cheque(f)
+        print("Response collection :",pd.read_excel(billing.download_file(res["ul"])) )
+        queryset.update(pushed = True)
+        sync_reports({"collection" : None})
+
+    def changelist_view(self, request, extra_context:dict ={}): # type: ignore
+
+        class BankStatementUploadForm(forms.Form):
+            bank = forms.ChoiceField(choices=[("sbi","SBI"),("bob","BOB")],initial="sbi")
+            excel_file = forms.FileField(label="Bank Statement Excel")
+            Submit = submit_button("Upload")
+            Action = ""
+
+        if request.method == 'GET' :
+            sync_reports({"sales":60*60,"adjustment":60*60,"collection":10*60})
+
+        form = BankStatementUploadForm()
+        if request.method == 'POST' and (request.POST.get("action") is None):
+            form = BankStatementUploadForm(request.POST, request.FILES)
+            if form.is_valid():
+                excel_file = request.FILES['excel_file']
+                df = pd.read_csv(excel_file , skiprows=17 , sep="\t")
+                df = df.rename(columns={"Txn Date":"date","Credit":"amt","Ref No./Cheque No.":"ref","Description":"desc"})
+                df = df.iloc[:-1]
+                df["date"] = pd.to_datetime(df["date"],format='%d %b %Y')
+                df["idx"] = df.groupby("date").cumcount() + 1 
+                df = df[["date","ref","desc","amt","idx"]]
+                df["id"] = df["date"].dt.strftime("%d%m%Y") + df['idx'].astype(str)
+                df["date"] = df["date"].dt.date
+                df.amt = df.amt.astype(str).str.replace(",","").apply(lambda x  : float(x.strip()) if x.strip() else 0)
+                df["bank"] = form.cleaned_data["bank"]
+                bulk_raw_insert("bank",df,upsert=True)
+                messages.success(request, "Statement successfully uploaded")
+            else : 
+                messages.error(request, "Statement upload failed")
+        extra_context['form'] = form
     
-#     def coll(self,obj) : 
-#         bills = list(models.OutstandingRaw.objects.filter(party_id = obj.party_id,beat = obj.beat,date__lt = obj.date).values_list("inum",flat=True))
-#         coll = models.OutstandingRaw.objects.filter(inum__in = bills,date = obj.date).values('inum').annotate(bal = Sum("amt"))
-#         return "/".join([ f'{bill["bal"]}' for bill in coll ])
+        return super().changelist_view(request, extra_context=extra_context | {"title" : ""})
 
-#     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
-#         party = "SRI MANONMANI STORE" #"Saravana Pazhamudir Cholai-F" #"SRI BALAJI SUPER MARKET-D" #"A V STORE-D"
-#         return super().get_queryset(request).filter(party_id = "P16048")
+    def response_change(self, request, obj): # type: ignore
+        ##Override parent function to prevent chnage success message when the bank collection is not valid 
+        if obj.is_valid : 
+            return super().response_change(request, obj)
+        else : 
+            return self.response_post_save_change(request, obj)
+
+    def save_model(self, request, obj, form, change):
+        obj._save_deferred = True  # Flag to save it later in save_related()
+
+    def save_related(self, request, form, formsets, change):
+        bank_obj = form.instance 
+        total_amt = 0 
+        for formset in formsets:
+            if formset.model == models.BankCollection :
+                for inline_form in formset.forms:
+                    obj = inline_form.instance
+                    is_deleted = inline_form.cleaned_data.get('DELETE')
+                    if obj.amt and (not is_deleted):
+                        total_amt += obj.amt    
+
+        if abs(total_amt - bank_obj.amt) > 5 :  
+            messages.error(request,f"Cheque Value & Collection Value Mismatch \n Total value : {total_amt} , Cheque amt : {bank_obj.amt}")
+            bank_obj.is_valid = False 
+            formsets.clear()
+            return 
+        else : 
+            bank_obj.is_valid = True 
+            if hasattr(form.instance, '_save_deferred') and form.instance._save_deferred:
+              super().save_model(request,bank_obj,form,change)    
+        super().save_related(request,form,formsets, change)
+
+ProcessStatus = IntEnum("ProcessStatus",(("NotStarted",0),("Success",1),("Started",2),("Failed",3)))
+
+class BasepackAdmin(BaseProcessStatusAdmin) : 
+    
+    basepack_lock = threading.Lock()
+
+    change_list_template = "form_and_changelist.html"
+    process_logs = []
+    process_names = ["current_stock","basepack_download","basepack_upload","beat_export","order_sync"]
+                
+    today = datetime.date.today() 
+
+    def current_stock(self,ikea,form) : 
+        stock = ikea.current_stock(self.today)
+        stock = stock[stock.Location == "MAIN GODOWN"]
+        self.active_basepack_codes = set(stock["Basepack Code"].dropna().astype(int))
+        self.current_stock_original = stock.copy()
+    
+    def basepack_download(self,ikea,form) : 
+        self.basepack_io = ikea.basepack()         
+    
+    def basepack_upload(self,ikea,form) : 
+        wb = load_workbook(self.basepack_io , data_only = True)
+        sh = wb['Basepack Information']
+        rows = sh.values
+        basepack = pd.DataFrame( columns=next(rows) , data = rows )
+        basepack_original = basepack.copy()
+        color_in_hex = [cell.fill.start_color.index for cell in sh['A:A']]
+        basepack["color"] = pd.Series( color_in_hex[1:])
+        basepack = basepack[ basepack["color"] != 52 ][basepack["BasePack Code"].notna()]
+        basepack["new_status"] = basepack["BasePack Code"].astype(int).isin( self.active_basepack_codes )
+        basepack = basepack[ basepack["new_status"] != (basepack["Status"] == "ACTIVE") ]
+        basepack.to_excel("basepack.xlsx",index=False,sheet_name="Basepack Information")      
+        basepack["Status"] = basepack["Status"].replace({ "ACTIVE" : "INACTIVE_x" , "INACTIVE" : "ACTIVE_x" })
+        basepack["Status"] = basepack["Status"].str.split("_").str[0] 
+        basepack = basepack[ list(basepack.columns)[5:11] ]
+        basepack = basepack.astype({"BasePack Code":str,"SeqNo":int,"MOQ":int})
+
+        output = BytesIO()
+        writer = pd.ExcelWriter(output,engine='xlsxwriter')
+        basepack.to_excel(writer,index=False,sheet_name="Basepack Information")
+        basepack_original.to_excel(writer,index=False,sheet_name="basepack_original")
+        self.current_stock_original.to_excel(writer,index=False,sheet_name="currentstock")
+        writer.close()
+        output.seek(0)
+
+        with open('basepack.xlsx', 'wb+') as f:  
+            f.write(output.read())
+
+        print( "Basepack Changed (NEW STATUS COUNTS) : " ,  basepack["Status"].value_counts().to_dict() )
+        
+        if len(basepack.index) : 
+            files = { "file" : ("basepack.xlsx", output ,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')  }
+            res = ikea.post("/rsunify/app/basepackInformation/uploadFile", files = files ).text 
+            print("Basepack uploaded") 
+        else : 
+            print("Nothing to upload basepack")
+
+
+    def beat_export(self,ikea,form) : 
+        ##Start Beat Export and Order Sync after basepack uploaded
+        export_data = { "fromDate": str(self.today) ,"toDate": str(form.cleaned_data["date"]) }
+        ikea.post("/rsunify/app/quantumExport/checkBeatLink",
+                data = {'exportData': json.dumps(export_data) })
+        ikea.post("/rsunify/app/sfmIkeaIntegration/callSfmIkeaIntegrationSync")
+        ikea.post("/rsunify/app/sfmIkeaIntegration/checkEmpStatus")
+        sm = ikea.post("/rsunify/app/quantumExport/getSalesmanData", 
+                data={"exportData": json.dumps(export_data) }).json()
+        sm = ",".join( i[0]  for i in sm )
+        ikea.post("/rsunify/app/ikeaCommonUtilController/qocRepopulation")
+        export_num = ikea.post("/rsunify/app/quantumExport/startExport",
+                    data = {"exportData": json.dumps(export_data | {"salesManId": sm ,"beatId":"-1"}) } ).json()
+        while True : 
+            status = ikea.post("/rsunify/app/quantumExport/getExportStatus",{"processId": export_num}).json()
+            if str(status) == str(["0","0","1"]) : #comparing two lists
+                print("Beat Export Completed")
+                break 
+            time.sleep(5)
+            ikea.logger.debug(f"Waiting for beat export to be completed")
+
+    def order_sync(self,ikea,form) : 
+        ikea.post("/rsunify/app/sfmIkeaIntegration/callSfmIkeaIntegrationSync")
+        ikea.post("/rsunify/app/api/callikeatocommoutletcreationallapimethods")
+        sync_status = ikea.post("/rsunify/app/fileUploadId/upload").text.split("$del")[0]
+        ikea.logger.debug(f"Order Sync (Basepack) status : {sync_status}")
+        
+    def basepack(self,form) :
+        with self.basepack_lock : 
+            ikea = Billing()
+            processes = [self.current_stock,self.basepack_download,self.basepack_upload,self.beat_export,self.order_sync]
+            processes = [ functools.partial(process,ikea,form) for process in processes ]
+            self.run_processes(processes)
+                    
+    def changelist_view(self, request: HttpRequest, extra_context:dict = {}) -> TemplateResponse: # type: ignore
+
+        def get_default_beat_export_date() :
+            days = 6 
+            return  (self.today + datetime.timedelta(days=days)) if self.today.day <= (20 - days) else self.today.replace(day=20)
+        
+        class BasepackForm(forms.Form) : 
+            date = forms.DateField(required=False,initial=get_default_beat_export_date(),
+                                   label="Beat Export Date", widget=forms.DateInput(attrs={'type' : 'date'}))
+            download = forms.CharField(required=False,label="", initial="Download" ,widget=forms.HiddenInput(attrs={'type':'submit'}))
+            Action = ""
+            Submit = "Submit"
+
+        form = BasepackForm()
+        if request.method == "POST" :     
+            form = BasepackForm(request.POST)
+            if form.is_valid() :
+                if form.cleaned_data.get("download") :
+                    with open("basepack.xlsx","rb") as f : 
+                        bytes = f.read()
+                    response = HttpResponse(bytes, content_type='application/vnd.ms-excel')
+                    response['Content-Disposition'] = 'attachment; filename="' + f"basepack_{self.today}.xlsx" + '"'
+                    return response 
+                                
+                if not self.basepack_lock.locked() : 
+                    self.create_logs()
+                    thread = threading.Thread( target = self.basepack , args = (form,) )
+                    thread.start()
+            
+        refresh_time = 10000 if self.basepack_lock.locked() else 1e7 
+        return super().changelist_view(request, extra_context | {"refresh_time" : refresh_time , 
+                                                                 "form" : form, "title" : hyperlink("/static/basepack.xlsx","Download Report",new_tab=False) })
+                
 
 
 class MyAdminSite(admin.AdminSite):
 
     models_on_navbar = []
+    site_title = "Devaki Enterprises"
     
     def get_app_list(self, request,app_label=None):
         """
@@ -1057,17 +1330,35 @@ class MyAdminSite(admin.AdminSite):
         for model in model_or_iterable : 
             if show_on_navbar : self.models_on_navbar.append(model)
 
+    def each_context(self, request):
+        context = super().each_context(request)
+        query_url = lambda view,params : f'{reverse(view)}?{urlencode(params)}'
+        navbar_data = {
+            "Billing": reverse("admin:app_orders_changelist") ,
+            "Print": {
+                "RETAIL": reverse("admin:retail"),
+                "WHOLESALE": reverse("admin:wholesale"),
+            },
+            "Collection": {
+                "Outstanding": reverse("admin:app_outstanding_changelist"),
+                "Cheque": reverse("admin:app_bank_changelist"),
+                "Salesman Cheque": query_url("admin:app_salesmancollection_changelist" , {"time":"Today"}),
+            },
+        }
+        context['navbar_data'] = navbar_data
+        return context
+    
 admin_site = MyAdminSite(name='myadmin')
-admin_site.has_permission = lambda r: setattr(r, 'user', AccessUser()) or True
+admin_site.has_permission = lambda r: setattr(r, 'user', AccessUser()) or True # type: ignore
 
 
 admin_site.register(models.Orders,BillingAdmin)
 admin_site.register(models.Outstanding,OutstandingAdmin)
-
 admin_site.register(models.Bank,BankAdmin)
 admin_site.register(models.SalesmanCollection,SalesCollectionAdmin)
 admin_site.register(models.Print,PrintAdmin)
-admin_site.register(models.OrdersProxy,OrdersAdmin,show_on_navbar=False)
+admin_site.register(models.OrdersProxy,OrdersAdmin)
+admin_site.register(models.BasepackProcessStatus,BasepackAdmin)
 
 
 

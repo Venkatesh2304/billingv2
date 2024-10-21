@@ -1,8 +1,8 @@
 import os
 import sqlite3
 import pandas as pd
-from app.models import *
 import warnings
+
 warnings.filterwarnings("ignore")
 
 PATH = "downloads/" #"/home/venkatesh/TALLY_DEVELOPMENT/ikea_sri_2022_2024/" #"downloads/"  
@@ -79,7 +79,7 @@ def bulk_raw_insert(table,df,upsert=False,ignore=True,is_partial_upsert=False,in
     query_db( query , many=True , values=rows["data"] )
 
 def query_db(query,many=False,values=[],is_select=False) : 
-    # from django.db import connectionk
+    # from django.db import connection
     import os 
     connection = sqlite3.connect(f'db.sqlite3')
     cursor = connection.cursor()

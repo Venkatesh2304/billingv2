@@ -45,6 +45,12 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
 ]
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+    }
+}
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -93,7 +99,7 @@ DATABASES = {
         "NAME": BASE_DIR / "db.sqlite3",
     },
     'OPTIONS': {
-            'timeout': 10,  
+            'timeout': 30,  
     }
 }
 

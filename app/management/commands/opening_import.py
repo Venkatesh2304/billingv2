@@ -1,11 +1,21 @@
 import datetime
 from io import BytesIO
-from app.admin import sync_ikea_report
 from app.common import *
 from custom.classes import Billing,IkeaDownloader
 from app.sales_import import CollectionInsert, PartyInsert
 import app.models as models
+from app.admin import sync_reports
 
+i = Billing()
+a = i.einvoice_json(datetime.date(2024,10,15),datetime.date.today(),["A49554"])  #A49554
+
+print(a)
+if a : 
+    with open("a.json","wb+") as f : f.write(a.getbuffer())
+
+
+# sync_reports(limits={"sales" : 5*60,"collection" : None ,"adjustment" : None })
+exit(0)
 i = Billing()
 df = i.loading_sheet([])
 df.to_excel("a.xlsx",index=False)

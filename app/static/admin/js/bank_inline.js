@@ -1,11 +1,9 @@
-
+const GET_OUTSTANDING_URL = "/app/bank/get-outstanding"
 function addEventListeners() { 
     console.log("Adding Event listener")
     document.querySelectorAll('.field-bill select').forEach((input,i) => {
         input.onchange  = (e) => {
             const id = e.target.value;
-            console.log(23)
-            console.log(id)
             if (id) {
                 console.log(id,i)
                 fetchStaticAmt(id,i);
@@ -19,7 +17,7 @@ function addEventListeners() {
 }
 
 function fetchAmt(id,i) {
-    fetch(`/get-outstanding/${id}/`)
+    fetch(`${GET_OUTSTANDING_URL}/${id}/`)
         .then(response => response.json())
         .then(data => {
             document.querySelectorAll('input[name$="balance"]')[i].value = data.balance ;
@@ -29,7 +27,7 @@ function fetchAmt(id,i) {
 }
 
 function fetchStaticAmt(id,i) {
-    fetch(`/get-outstanding/${id}/`)
+    fetch(`${GET_OUTSTANDING_URL}/${id}/`)
         .then(response => response.json())
         .then(data => {
             document.querySelectorAll('.field-balance')[i].innerText = data.balance ;
