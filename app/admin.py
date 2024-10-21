@@ -950,7 +950,7 @@ class PrintAdmin(CustomAdminModel) :
                 messages.error(request, mark_safe(f"Bills failed to print {link}: {group[0]} - {group[-1]}"))
 
     def base_print_action(self, request, queryset, print_types):
-        einv_qs = queryset.filter(bill__ctin__isnull=False, bill__einvoice__isnull=True)
+        einv_qs =  queryset.filter(bill__ctin__isnull=False, bill__einvoice__isnull=True).none()
         einv_count = einv_qs.count()
         einvoice_service = Einvoice()
 
