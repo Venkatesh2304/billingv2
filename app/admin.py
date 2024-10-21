@@ -1281,7 +1281,7 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
         class BasepackForm(forms.Form) : 
             date = forms.DateField(required=False,initial=get_default_beat_export_date(),
                                    label="Beat Export Date", widget=forms.DateInput(attrs={'type' : 'date'}))
-            submit = submit_button("Submit")
+            Submit = submit_button("Submit")
             download = submit_button("Download")
             Action = ""
 
