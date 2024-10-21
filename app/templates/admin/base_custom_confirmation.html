@@ -1,0 +1,29 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+  <form method="post">
+    {% csrf_token %}
+      {% for key, values in post_data.items %}
+        {% for value in values %}
+          <input type="hidden" name="{{ key }}" value="{{ value }}">
+         {% comment %} <li>{{obj}}</li> {% endcomment %}
+        {% endfor %}
+      {% endfor %}
+      <input type="text" name="confirm_action" value="yes" hidden>
+      {% block form %}
+      {% endblock %}
+
+      {% if show_cancel_btn %}
+      <input type="button" onclick="history.back()" value="Cancel" >
+      {% endif %}
+      
+      {% if show_objects %}
+      <p style="margin-top:20px;"> Actions to be applyed on the following :</p>
+      <ul>
+        {% for obj in queryset %}
+         <li>{{obj}}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+
+  </form>
+  {% endblock %}

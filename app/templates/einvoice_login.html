@@ -1,0 +1,10 @@
+{% extends "admin/base_custom_confirmation.html" %}
+{%  block form %}
+{{ block.super }}
+{% csrf_token %}
+<div style="display:flex ; flex-direction: column; margin : auto ; width: 400px; height: 100px; ">
+<img src="data:image/png;base64,{{ image_data }}" alt="Captcha Image" style="margin: 10px;"/>
+<input type="text" name="captcha" />
+<input type="submit" value="Submit" name="asd"/>
+</div>
+{% endblock %}

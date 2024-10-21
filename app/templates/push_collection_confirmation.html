@@ -1,0 +1,20 @@
+{% extends "admin/base_custom_confirmation.html" %}
+{%  block form %}
+{{ block.super }}
+{% csrf_token %}
+<h1>Are u sure to push collection to IKEA ?</h1>
+
+    <p style="font-size: 18px;">
+    <b>
+Total No Of Cheques : {{total_chqs}} </br> 
+Total No Of Bills : {{total_bills}} </br>
+Total Amount : {{amt}} </br>
+    </b>
+</p>
+{% comment %} <div style="display:flex ; flex-direction: column; margin : auto ; width: 400px; height: 100px; "> {% endcomment %}
+{% comment %} <img src="data:image/png;base64,{{ image_data }}" alt="Captcha Image" style="margin: 10px;"/> {% endcomment %}
+
+<input type="submit" value="Push" name="submit"/>
+{% comment %} </div> {% endcomment %}
+{% endblock %}
+

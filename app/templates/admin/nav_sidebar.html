@@ -1,0 +1,131 @@
+ <style>
+            .navbar {
+                display: flex;
+                align-items: center;
+                background-color: #f4f7f6;
+                padding: 1rem 2rem;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                position: absolute;
+                top: 0;
+                width: 100%;
+            }
+            .content { 
+                padding-top : 80px ; 
+            }
+    
+            .navbar a {
+                text-decoration: none;
+                color: #333;
+                padding: 0.75rem 1rem;
+                font-size: 1.1rem;
+                font-weight: bold;
+                transition: color 0.3s ease;
+                min-width: 70px;
+            }
+    
+            .navbar a:hover {
+                color: #007bff;
+            }
+    
+            .navbar .logo {
+                font-size: 1.5rem;
+                color: #007bff;
+                margin-right: 20px ;
+            }
+    
+            .navbar .menu {
+                display: flex;
+                gap: 1rem;
+            }
+    
+            .dropdown {
+                position: relative;
+                display: flex;
+            }
+
+            .dropdown:hover .dropdown-menu {
+                display: block;
+            }
+    
+            .dropdown-menu {
+                display: none;
+                width: max-content;
+                position: absolute;
+                background-color: white;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                border-radius: 0.25rem;
+                top: 100%;
+                left: 0;
+                z-index: 1000;
+                min-width: 150px;
+            }
+    
+            .dropdown-menu a {
+                display: block;
+                padding: 0.75rem 1rem;
+                color: #333;
+                font-size: 1rem;
+                text-decoration: none;
+            }
+    
+            .dropdown-menu a:hover {
+                background-color: #f4f7f6;
+            }
+    
+            /* Responsive Menu Toggle */
+            .navbar-toggler {
+                display: none;
+            }
+    
+            @media (max-width: 768px) {
+                .navbar .menu {
+                    display: none;
+                    flex-direction: column;
+                    width: 100%;
+                }
+    
+                .navbar-toggler {
+                    display: block;
+                    background: none;
+                    border: none;
+                    font-size: 1.5rem;
+                    cursor: pointer;
+                }
+    
+                .navbar-toggler.active + .menu {
+                    display: flex;
+                }
+            }
+        </style>
+
+        <nav class="navbar">
+            <button class="navbar-toggler" aria-label="Toggle navigation">&#9776;</button>
+            <div><a class="logo" href="#">{{site_title}}</a></div>
+            <div class="menu">
+                {% for menu_name, menu_item in navbar_data.items %}
+                    {% if menu_item.items %}
+                        <div class="dropdown">
+                            <a href="#">{{ menu_name }}</a>
+                            <div class="dropdown-menu">
+                                {% for submenu_name, submenu_view in menu_item.items %}
+                                    <a href="{{ submenu_view }}">{{ submenu_name }}</a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% else %}
+                        <a href="{{ menu_item }}">{{ menu_name }}</a>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        </nav>
+
+             <script>
+            // Toggle Menu for Mobile View
+            const toggler = document.querySelector('.navbar-toggler');
+            const menu = document.querySelector('.menu');
+            toggler.addEventListener('click', () => {
+                toggler.classList.toggle('active');
+                menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex';
+            });
+        </script>
+ 
