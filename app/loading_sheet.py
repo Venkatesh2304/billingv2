@@ -46,7 +46,10 @@ def print_table(pdf,df,border = 0,print_header = True) :
                 pdf.cell(col_widths[i], H, str(item), border=B, align='L')
         pdf.ln()
 
-def create_pdf(tables:tuple[pd.DataFrame],header = False,salesman = None) : 
+from enum import Enum 
+LoadingSheetType = Enum("LoadingSheetType","Salesman Plain")
+
+def create_pdf(tables:tuple[pd.DataFrame],sheet_type:LoadingSheetType,context = {}) : 
     # Load and process the data
 
     df,party_sales = tables 
@@ -56,19 +59,21 @@ def create_pdf(tables:tuple[pd.DataFrame],header = False,salesman = None) :
     df["Units"] = df["Total LC.Units"].str.split(".").str[1]
     df = df.rename(columns={"Total FC": "FC", "Total Gross Sales": "Gross Value"})
     df = df[["Product Name", "MRP", "FC", "Units", "LC","UPC", "Gross Value"]]
-    df = df.fillna("")
-    
-    df[["FC","LC"]] = df[["FC","LC"]].replace({"0" : "-"})
     total_fc = df["FC"].iloc[-1]
     total_lc = df["LC"].iloc[-1]
+    df = df.fillna("")
+    df["No"] = df.index.copy() +  1    
+    df[["FC","LC"]] = df[["FC","LC"]].replace({"0" : ""})
     df = df.iloc[:-1]
 
     party_sales = party_sales.dropna(subset="Party")
-    party_sales = party_sales[["Bill No","Party","Gross Amount","Sch.Disc","Cash.Disc","Net Amt"]]
+    party_sales = party_sales[["Bill No","Party","Gross Amount","Sch.Disc","Net Amt"]]
+    party_sales = party_sales.sort_values("Bill No")
     party_sales = party_sales.fillna("")
 
     no_of_bills = len(party_sales.index) - 1 
     outlet_count = party_sales["Party"].nunique() - 1
+    lines_count = len(df.index)
     # bills =  f'{party_sales["Party"].min()} - {party_sales["Party"].max()}'
     time = datetime.datetime.now().strftime("%d-%b-%Y %I:%M %p") 
     total_value = round(float(party_sales.iloc[-1]["Net Amt"]))
@@ -78,19 +83,35 @@ def create_pdf(tables:tuple[pd.DataFrame],header = False,salesman = None) :
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=5)
     pdf.add_page()
-    pdf.set_font('Arial', '', 10) #,"PARTIES",outlet_count
-    header_table = [] 
-    if header : header_table.append(["SALESMAN",salesman,"","","VALUE",total_value])
-    header_table.append(["TIME",time,"","","BILLS",no_of_bills])
-    header_table.append(["TOTAL LC",total_lc,"","","TOTAL FC",total_fc])
+    pdf.set_font('Arial', '', 10)
+    header_table = []
+
+    if sheet_type == LoadingSheetType.Salesman :
+        header_table.append(["TIME",time,"","","VALUE",total_value])
+        print( context )
+        header_table.append(["SALESMAN",context["salesman"],"","","BEAT",context["beat"]])
+        header_table.append(["PARTY",context["party"],"","","TOTAL CASE",total_fc])
+        df["Case"] = (df["FC"].apply(lambda x: int(x) if x else 0) + df["LC"].apply(lambda x: int(x) if x else 0)).astype(str).replace("0","")
+        df = df[["No","Product Name","MRP","Case","Units","UPC","Gross Value"]]
+        
+    if sheet_type == LoadingSheetType.Plain :
+        header_table.append(["TIME",time,"","","BILLS",no_of_bills])
+        header_table.append(["LINES",lines_count,"","","OUTLETS",outlet_count])
+        header_table.append(["TOTAL LC",total_lc,"","","TOTAL FC",total_fc])
+        df[["LC.","Units.","FC."]] = df[["LC","Units","FC"]].copy()
+        df = df[["No","Product Name","MRP","LC","Units","FC","UPC","LC.","Units.","FC."]]
+
     header_table = pd.DataFrame(header_table,dtype="str",columns=["a","b","c","d","e","f"])
     print_table(pdf,header_table,border=0,print_header=False)
     pdf.ln(5)
+    print_table(pdf,df,border=1)
 
-    print_table(pdf,df)
-    if header : 
+    if sheet_type == LoadingSheetType.Plain : 
+        pdf.add_page()
+    if sheet_type == LoadingSheetType.Salesman : 
         pdf.ln(5)
-        print_table(pdf,party_sales,border = 1)
+
+    print_table(pdf,party_sales,border = 1)
         
     # Output the PDF
     pdf.output(OUTPUT_PDF_FILE)

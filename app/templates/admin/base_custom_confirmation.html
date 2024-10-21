@@ -1,6 +1,15 @@
 {% extends "admin/base_site.html" %}
+{% block extrastyle %}
+  {{ block.super }}
+  <style>
+  .content { align-self : center;}
+  </style>
+{% endblock %}
 {% block content %}
-  <form method="post">
+  <form method="post" style="display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;">
     {% csrf_token %}
       {% for key, values in post_data.items %}
         {% for value in values %}
@@ -10,6 +19,11 @@
       {% endfor %}
       <input type="text" name="confirm_action" value="yes" hidden>
       {% block form %}
+      {% if form %}
+          <script src="/static/admin/js/vendor/jquery/jquery.js"></script>
+          {{ form.media }}
+         {{ form.as_p }}
+      {% endif %}
       {% endblock %}
 
       {% if show_cancel_btn %}

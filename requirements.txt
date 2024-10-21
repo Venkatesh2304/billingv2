@@ -8,6 +8,7 @@ curlparser==0.1.0
 Django==5.1.1
 django-admin-logs==1.3.0
 django-autocomplete-light==3.11.0
+django-querysetsequence==0.17
 dnspython==2.6.1
 et-xmlfile==1.1.0
 fpdf==1.7.2

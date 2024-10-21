@@ -399,7 +399,7 @@ class Billing(IkeaDownloader) :
             coll["bf"] = True
         self.pushed_collection_party_ids = [ coll["pc"] for coll in collection_data if coll["ck"]  ]
 
-        coll_payload = {"mcl": collection_data, "id": self.today.strftime( "%d/%m/%Y"), "CLIENT_REQ_UID": self.client_id_generator() , "ri" : 0 }
+        coll_payload = {"mcl": collection_data, "id": self.today.strftime("%d/%m/%Y"), "CLIENT_REQ_UID": self.client_id_generator() , "ri" : 0 }
         self.logger.info(f"Imported Collection :: {self.pushed_collection_party_ids}")
         postcollection = self.post("/rsunify/app/quantumImport/importSelectedCollection", json=coll_payload).json()
         

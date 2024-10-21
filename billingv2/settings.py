@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'django_admin_logs',
     'dal',
     'dal_select2',
+    'rangefilter',
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",

@@ -193,8 +193,8 @@
             {% comment %} <button onclick="window.open('/app/ordersproxy/?place_order__exact=0','_blank')">View Orders</button> {% endcomment %}
             
             {% comment %} <a href='/app/print/?time__isnull=true' target="_blank" class="hyperlink" style="margin-right: 15px;margin-left: 15px;" >Manual Printing</a> {% endcomment %}
-            <a href='/app/ordersproxy/?billing=last&place_order__exact=0' target="_blank" class="hyperlink" >Rejected Orders</a>
-            <a href='/app/ordersproxy/?billing=last&place_order__exact=1&creditlock__exact=0' target="_blank" class="hyperlink" >Pending Orders</a>
+            <a href='/app/ordersproxy/rejected_orders?billing=last' target="_blank" class="hyperlink" >Rejected Orders</a>
+            <a href='/app/ordersproxy/pending_orders?billing=last' target="_blank" class="hyperlink" >Pending Orders</a>
             {% comment %} <a href='/party-sync' target="_blank" class="hyperlink" >Beat Export</a> {% endcomment %}
 
             {% if form.errors %}

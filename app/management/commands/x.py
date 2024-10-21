@@ -33,7 +33,8 @@ from app.models import Orders,OrderProducts
 
 print( Orders.objects.filter(beat__isnull = True).all() )
 print( Outstanding.objects.filter(inum = "A34406").first().party.name )
-print( pd.read_sql(f"select * from app_outstanding where inum = 'A34406' ",connection)  )
+print( pd.read_sql(f"select * from app_sales where inum = 'A44406' ",connection)  )
+print( pd.read_sql(f"select * from app_collection where inum = 'A44406' ",connection)  )
 
 
 cur = connection.cursor()
