@@ -748,7 +748,7 @@ class SalesCollectionAdmin(CustomAdminModel) :
         
 class PrintAdmin(CustomAdminModel) :
     list_display = ["bill","party","salesman","type","time","einvoice","ctin"]
-    ordering = ["-bill"]
+    ordering = ["bill"]
     actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet","only_einvoice"]
     custom_views = [("retail","changelist_view"),("wholesale","changelist_view"),]
 
@@ -764,16 +764,19 @@ class PrintAdmin(CustomAdminModel) :
             'file_name': "bill.pdf",
             'update_fields': {'type': PrintType.FIRST_COPY.value} ,
             'allow_printed'  : False , 
+            'group_bills' : True , 
         },
         PrintType.SECOND_COPY: {
             'create_bill': lambda billing, group, context: billing.Download(bills=group,pdf=False, txt=True) and secondarybills.main('bill.txt', 'bill.docx'),
             'file_name': "bill.docx" ,
             'allow_printed'  : True , 
+            'group_bills' : True , 
         },
         PrintType.LOADING_SHEET: {
             'create_bill': lambda billing, group, context: loading_sheet.create_pdf(billing.loading_sheet(group), header=False),
             'file_name': "loading.pdf", 
             'allow_printed'  : True , 
+            'group_bills' : False , 
         },
         PrintType.LOADING_SHEET_SALESMAN: {
             'create_bill': lambda billing, group, context: loading_sheet.create_pdf(billing.loading_sheet(group), 
@@ -785,6 +788,7 @@ class PrintAdmin(CustomAdminModel) :
             },
             'update_fields': {'type': PrintType.LOADING_SHEET.value} , 
             'allow_printed'  : False , 
+            'group_bills' : False , 
         }
     }
 
@@ -921,10 +925,10 @@ class PrintAdmin(CustomAdminModel) :
         return failed_inums
 
     def print_bills(self, request, billing: Billing, queryset, print_type: PrintType):
-        
-        groups = self.group_consecutive_bills([bill.bill_id for bill in queryset])
-        
+
         config = self.PRINT_ACTION_CONFIG[print_type]
+        bills = [bill.bill_id for bill in queryset]
+        groups = self.group_consecutive_bills(bills) if config["group_bills"] else  [bills]
 
         for group in groups:
             # Get additional context for the action (like salesman details if needed)
@@ -950,7 +954,7 @@ class PrintAdmin(CustomAdminModel) :
                 messages.error(request, mark_safe(f"Bills failed to print {link}: {group[0]} - {group[-1]}"))
 
     def base_print_action(self, request, queryset, print_types):
-        einv_qs =  queryset.filter(bill__ctin__isnull=False, bill__einvoice__isnull=True).none()
+        einv_qs =  queryset.filter(bill__ctin__isnull=False, bill__einvoice__isnull=True).none() #warning
         einv_count = einv_qs.count()
         einvoice_service = Einvoice()
 

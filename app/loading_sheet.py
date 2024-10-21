@@ -57,7 +57,10 @@ def create_pdf(tables:tuple[pd.DataFrame],header = False,salesman = None) :
     df = df.rename(columns={"Total FC": "FC", "Total Gross Sales": "Gross Value"})
     df = df[["Product Name", "MRP", "FC", "Units", "LC","UPC", "Gross Value"]]
     df = df.fillna("")
+    
     df[["FC","LC"]] = df[["FC","LC"]].replace({"0" : "-"})
+    total_fc = df["FC"].iloc[-1]
+    total_lc = df["LC"].iloc[-1]
     df = df.iloc[:-1]
 
     party_sales = party_sales.dropna(subset="Party")
@@ -79,6 +82,7 @@ def create_pdf(tables:tuple[pd.DataFrame],header = False,salesman = None) :
     header_table = [] 
     if header : header_table.append(["SALESMAN",salesman,"","","VALUE",total_value])
     header_table.append(["TIME",time,"","","BILLS",no_of_bills])
+    header_table.append(["TOTAL LC",total_lc,"","","TOTAL FC",total_fc])
     header_table = pd.DataFrame(header_table,dtype="str",columns=["a","b","c","d","e","f"])
     print_table(pdf,header_table,border=0,print_header=False)
     pdf.ln(5)
