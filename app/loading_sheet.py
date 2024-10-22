@@ -81,6 +81,7 @@ def create_pdf(tables:tuple[pd.DataFrame],sheet_type:LoadingSheetType,context = 
 
     # Create PDF
     pdf = FPDF()
+    pdf.set_top_margin(15)
     pdf.set_auto_page_break(auto=True, margin=5)
     pdf.add_page()
     pdf.set_font('Arial', '', 10)

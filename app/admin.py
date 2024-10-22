@@ -830,7 +830,7 @@ class PrintAdmin(CustomAdminModel) :
             'get_context': lambda request,queryset: {
                 'salesman': models.Beat.objects.filter(name = queryset.first().bill.beat).first().salesman_name if queryset.exists() else '' , 
                 'beat': queryset.first().bill.beat if queryset.exists() else '' , 
-                'party' : request.POST.get("party_name","-").upper()
+                'party' : request.POST.get("party_name","SALESMAN").upper() or "SALESMAN" , 
             },
             'update_fields': {'type': PrintType.LOADING_SHEET.value} , 
             'allow_printed'  : False , 
@@ -1026,7 +1026,6 @@ class PrintAdmin(CustomAdminModel) :
                     messages.error(request, mark_safe(f"Bills failed to print {link}: {group[0]} - {group[-1]}"))
             
             
-
     def base_print_action(self, request, queryset, print_types):
         einv_qs =  queryset.filter(bill__ctin__isnull=False, bill__einvoice__isnull=True).none() #warning
         einv_count = einv_qs.count()
@@ -1077,7 +1076,7 @@ class PrintAdmin(CustomAdminModel) :
     def loading_sheet_salesman(self, request, queryset):
 
         class SalesmanLoadingSheetForm(forms.Form):
-            party_name = forms.ModelChoiceField( queryset=models.Party.objects.none(),
+            party_name = forms.ModelChoiceField(required=False,queryset=models.Party.objects.none(),
                                 widget=autocomplete.ModelSelect2(url='admin:print_party_autocomplete'),
                                 label="Party Name" )
             Submit = submit_button("Print")
