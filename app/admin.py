@@ -810,7 +810,7 @@ class PrintAdmin(CustomAdminModel) :
             'group_bills' : True , 
         },
         PrintType.SECOND_COPY: {
-            'create_bill': lambda billing, group, context: billing.Download(bills=group,pdf=False, txt=True) and secondarybills.main('bill.txt', 'bill.docx'),
+            'create_bill': lambda billing, group, context: billing.Download(bills=group,pdf=False, txt=True) or secondarybills.main('bill.txt', 'bill.docx'),
             'file_name': "bill.docx" ,
             'allow_printed'  : True , 
             'group_bills' : True , 
