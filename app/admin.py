@@ -804,21 +804,21 @@ class PrintAdmin(CustomAdminModel) :
     PRINT_ACTION_CONFIG = {
         PrintType.FIRST_COPY: {
             'create_bill': lambda billing, group, context: billing.Download(bills=group,pdf=True, txt=False),
-            'file_name': "bill.pdf",
+            'file_names': "bill.pdf",
             'update_fields': {'type': PrintType.FIRST_COPY.value} ,
             'allow_printed'  : False , 
             'group_bills' : True , 
         },
         PrintType.SECOND_COPY: {
             'create_bill': lambda billing, group, context: billing.Download(bills=group,pdf=False, txt=True) or secondarybills.main('bill.txt', 'bill.docx'),
-            'file_name': "bill.docx" ,
+            'file_names': "bill.docx" ,
             'allow_printed'  : True , 
             'group_bills' : True , 
         },
         PrintType.LOADING_SHEET: {
             'create_bill': lambda billing, group, context: loading_sheet.create_pdf(billing.loading_sheet(group), 
                                                                                     sheet_type=loading_sheet.LoadingSheetType.Plain),
-            'file_name': "loading.pdf", 
+            'file_names': "loading.pdf", 
             'allow_printed'  : True , 
             'group_bills' : False , 
         },
@@ -826,7 +826,7 @@ class PrintAdmin(CustomAdminModel) :
             'create_bill': lambda billing, group, context: loading_sheet.create_pdf(billing.loading_sheet(group), 
                                                                            sheet_type=loading_sheet.LoadingSheetType.Salesman, 
                                                                             context=context),
-            'file_name': "loading.pdf",
+            'file_names': "loading.pdf,loading.pdf",
             'get_context': lambda request,queryset: {
                 'salesman': models.Beat.objects.filter(name = queryset.first().bill.beat).first().salesman_name if queryset.exists() else '' , 
                 'beat': queryset.first().bill.beat if queryset.exists() else '' , 
@@ -1009,21 +1009,21 @@ class PrintAdmin(CustomAdminModel) :
             config['create_bill'](billing, group, context)
 
             # Print the file
-            file_name = config['file_name']
-            status = billing.Printbill(bills = group,print_files=[file_name])
+            file_names = config['file_names'].split(",")
+            status = billing.Printbill(bills = group,print_files=file_names)
             status = True  # placeholder
         
             # Update the queryset if required by the action
             if status and 'update_fields' in config:
                 queryset.update(**config['update_fields'], time=datetime.datetime.now())
              
-  
-            # Generate the download link
-            link = hyperlink(f"/static/{file_name}",print_type.name.upper(),style="text-decoration:underline;color:blue;") 
-            if status:
-                messages.success(request, mark_safe(f"Successfully printed {link}: {group[0]} - {group[-1]}"))
-            else:
-                messages.error(request, mark_safe(f"Bills failed to print {link}: {group[0]} - {group[-1]}"))
+            for file_name in list(set(file_names)) : 
+                # Generate the download link
+                link = hyperlink(f"/static/{file_name}",print_type.name.upper(),style="text-decoration:underline;color:blue;") 
+                if status:
+                    messages.success(request, mark_safe(f"Successfully printed {link}: {group[0]} - {group[-1]}"))
+                else:
+                    messages.error(request, mark_safe(f"Bills failed to print {link}: {group[0]} - {group[-1]}"))
             
             
 
