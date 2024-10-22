@@ -871,11 +871,11 @@ class PrintAdmin(CustomAdminModel) :
                 'Not Printed': lambda qs: qs.filter(time__isnull=True)
             }),
             # ("bill_id",create_admin_form_filter("Bill",BillRangeForm)),
+            create_simple_admin_list_filter("Bill Date","bill__date",date_filter_fn),
             create_simple_admin_list_filter("Salesman", "salesman", {
                 salesman: functools.partial(self.get_salesman_bills, salesman)
                 for salesman in models.Beat.objects.all().values_list("salesman_name", flat=True).distinct()
             }),
-            create_simple_admin_list_filter("Bill Date","bill__date",date_filter_fn),
         ]
     
     def date(self,obj):
