@@ -6,6 +6,7 @@ from functools import partial, update_wrapper
 import functools
 from io import BytesIO
 import json
+import shutil
 import custom.secondarybills  as secondarybills
 from dal import autocomplete
 import logging
@@ -59,6 +60,9 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlencode
 
 from rangefilter.filters import NumericRangeFilter
+import os 
+
+os.makedirs("bills/",exist_ok=True)
 
 def user_permission(s,*a,**kw) : 
     if a and False : return False #or "add" in a[0] "change" in a[0] or ("add" in a[0] ) 
@@ -182,8 +186,7 @@ def sync_reports(billing = None,limits = {},min_days_to_sync = {}) -> bool :
             
 BillingStatus = IntEnum("BillingStatus",(("NotStarted",0),("Success",1),("Started",2),("Failed",3)))
 
-billing_process_names = ["SYNC" , "PREVBILLS" , "RELEASELOCK" , "COLLECTION", "ORDER"  , "REPORTS" , 
-                          "DELIVERY" , "DOWNLOAD" , "PRINT" ][:-2]
+billing_process_names = ["SYNC" , "PREVBILLS" , "RELEASELOCK" , "COLLECTION", "ORDER"  , "DELIVERY", "REPORTS"  , "DOWNLOAD" , "PRINT" ][:-2]
 billing_lock = threading.Lock()
 
 def run_billing_process(billing_log: models.Billing,billing_form : forms.Form) :
@@ -304,7 +307,7 @@ def run_billing_process(billing_log: models.Billing,billing_form : forms.Form) :
 
     ##Start the proccess
     billing_process_functions = [ billing.Sync , billing.Prevbills ,  (lambda : billing.release_creditlocks(creditrelease)) , 
-                                  CollectionProcess ,  OrderProcess ,  ReportProcess ,  DeliveryProcess ]   
+                                  CollectionProcess ,  OrderProcess ,  DeliveryProcess , ReportProcess  ]   
     billing_process =  dict(zip(billing_process_names,billing_process_functions)) 
     billing_failed = False 
     for process_name,process in billing_process.items() : 
@@ -789,7 +792,7 @@ class PrintAdmin(CustomAdminModel) :
                                                    party__name__istartswith=self.q).values_list("party__name",flat=True).distinct() #warning
             return parties 
 
-    list_display = ["bill","party","salesman","type","time","einvoice","ctin"]
+    list_display = ["bill","party","salesman","type","time","amount"]#,"einvoice","ctin"]
     ordering = ["bill"]
     actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet","only_einvoice"]
     custom_views = [("retail","changelist_view"),("wholesale","changelist_view"),("print_party_autocomplete",PartyAutocomplete.as_view())]
@@ -806,7 +809,7 @@ class PrintAdmin(CustomAdminModel) :
             'create_bill': lambda billing, group, context: billing.Download(bills=group,pdf=True, txt=False),
             'file_names': "bill.pdf",
             'update_fields': {'type': PrintType.FIRST_COPY.value} ,
-            'allow_printed'  : True , 
+            'allow_printed'  : False , 
             'group_bills' : True , 
         },
         PrintType.SECOND_COPY: {
@@ -837,7 +840,6 @@ class PrintAdmin(CustomAdminModel) :
             'group_bills' : False , 
         }
     }
-
 
 
     # Function to filter the bills for a given salesman 
@@ -883,6 +885,9 @@ class PrintAdmin(CustomAdminModel) :
     
     def ctin(self,obj):
         return obj.bill.ctin
+    
+    def amount(self,obj):
+        return round(abs(obj.bill.amt))
     
     @admin.display(boolean=True)
     def einvoice(self,obj):  
@@ -1018,8 +1023,10 @@ class PrintAdmin(CustomAdminModel) :
                 queryset.update(**config['update_fields'], time=datetime.datetime.now())
              
             for file_name in list(set(file_names)) : 
+                renamed_file = f"{file_name.split('.')[0]}_{group[0]}_{group[-1]}.{file_name.split('.')[1]}"
+                shutil.copyfile(file_name,f"bills/{renamed_file}")
                 # Generate the download link
-                link = hyperlink(f"/static/{file_name}",print_type.name.upper(),style="text-decoration:underline;color:blue;") 
+                link = hyperlink(f"/static/{renamed_file}",print_type.name.upper(),style="text-decoration:underline;color:blue;") 
                 if status:
                     messages.success(request, mark_safe(f"Successfully printed {link}: {group[0]} - {group[-1]}"))
                 else:
