@@ -1000,7 +1000,7 @@ class PrintAdmin(CustomAdminModel) :
 
         for group in groups:
             # Get additional context for the action (like salesman details if needed)
-            context = config.get('get_context', lambda qs: {})(request,queryset)
+            context = config.get('get_context', lambda request,qs: {})(request,queryset)
 
             # Execute the create_bill action defined in the configuration
             config['create_bill'](billing, group, context)
