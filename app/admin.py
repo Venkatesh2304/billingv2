@@ -1000,7 +1000,10 @@ class PrintAdmin(CustomAdminModel) :
 
         for group in groups:
             # Get additional context for the action (like salesman details if needed)
-            context = config.get('get_context', lambda request,qs: {})(request,queryset)
+            context = {}
+            if config.get('get_context') :
+                context = config['get_context'](request,queryset)
+
 
             # Execute the create_bill action defined in the configuration
             config['create_bill'](billing, group, context)
@@ -1009,17 +1012,20 @@ class PrintAdmin(CustomAdminModel) :
             file_name = config['file_name']
             status = billing.Printbill(bills = group,print_files=[file_name])
             status = True  # placeholder
-
+        
             # Update the queryset if required by the action
             if status and 'update_fields' in config:
                 queryset.update(**config['update_fields'], time=datetime.datetime.now())
-
+             
+  
             # Generate the download link
             link = hyperlink(f"/static/{file_name}",print_type.name.upper(),style="text-decoration:underline;color:blue;") 
             if status:
                 messages.success(request, mark_safe(f"Successfully printed {link}: {group[0]} - {group[-1]}"))
             else:
                 messages.error(request, mark_safe(f"Bills failed to print {link}: {group[0]} - {group[-1]}"))
+            
+            
 
     def base_print_action(self, request, queryset, print_types):
         einv_qs =  queryset.filter(bill__ctin__isnull=False, bill__einvoice__isnull=True).none() #warning
@@ -1037,8 +1043,10 @@ class PrintAdmin(CustomAdminModel) :
                 self.handle_einvoice_upload(request,einv_qs)
 
             billing = Billing()
+            bills = list(queryset.values_list('bill_id', flat=True))
             for print_type in print_types:
                 allow_already_printed = self.PRINT_ACTION_CONFIG[print_type]["allow_printed"]
+                queryset = models.Print.objects.filter(bill_id__in=bills)
                 if not allow_already_printed: 
                     already_printed = queryset.filter(time__isnull=False) 
                     if already_printed and already_printed.exists():
