@@ -287,7 +287,7 @@ def run_billing_process(billing_log: models.Billing,billing_form : forms.Form) :
                 max_outstanding_day =  (today - outstanding_bill.date).days
                 max_collection_day = models.Collection.objects.filter(party = order.party , date = today).aggregate(date = Max("bill__date"))["date"]
                 max_collection_day = (today - max_collection_day).days if max_collection_day else 0   
-                if (max_collection_day > 21) or (max_outstanding_day >= 21): 
+                if (max_collection_day > 21) or (max_outstanding_day > 21): 
                     continue 
                 if (bill_value <= 500) or (outstanding_value <= 500):
                     order.release = True 
@@ -806,7 +806,7 @@ class PrintAdmin(CustomAdminModel) :
             'create_bill': lambda billing, group, context: billing.Download(bills=group,pdf=True, txt=False),
             'file_names': "bill.pdf",
             'update_fields': {'type': PrintType.FIRST_COPY.value} ,
-            'allow_printed'  : False , 
+            'allow_printed'  : True , 
             'group_bills' : True , 
         },
         PrintType.SECOND_COPY: {
