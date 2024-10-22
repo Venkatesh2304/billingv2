@@ -497,6 +497,7 @@ class Billing(IkeaDownloader) :
             return True
         except Exception as e:
             print("Win32 Failed . Printing Failed")
+            print(e)
             return False
 
 
