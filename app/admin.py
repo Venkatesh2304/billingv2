@@ -1318,6 +1318,8 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
         output.seek(0)
 
         print( "Basepack Changed (NEW STATUS COUNTS) : " ,  basepack["Status"].value_counts().to_dict() )
+        with open('basepack.xlsx', 'wb+') as f:  
+            f.write(output.read())
         
         if len(basepack.index) : 
             output.seek(0)
