@@ -105,6 +105,7 @@ class AbstractProcessStatus(models.Model) :
 class BasepackProcessStatus(AbstractProcessStatus) : pass
 
 
+
 ## Models For Accounting
 ## Abstract models
 
@@ -161,6 +162,7 @@ class Sales( PartyVoucher,GstVoucher ) :
       tcs = FloatField(default=0,db_default=0)
       columns = PartyVoucher.columns + ["ctin","roundoff","type","discount","beat"]
       beat = models.TextField(max_length=40,null=True)
+      delivered = models.BooleanField(default=True,db_default=True)
 
       class Meta :
         verbose_name_plural = 'Sales'
@@ -211,6 +213,7 @@ class Print(models.Model) :
     bill = models.OneToOneField("app.Sales",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING,primary_key=True)
     time = models.DateTimeField(null=True,blank=True)
     type = models.TextField(max_length=20,choices=(("first_copy","First Copy"),("loading_sheet","Loading Sheet")),null=True,blank=True)
+    reason = models.TextField(max_length=100,null=True,blank=True)
 
   
 class Outstanding(models.Model) : 

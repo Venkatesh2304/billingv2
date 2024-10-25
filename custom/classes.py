@@ -56,6 +56,7 @@ class BaseIkea(Session) :
                 if "jsonObjforheaders" in r.data  : del r.data['jsonObjforheaders']
           print(r.data)
           durl = r.send(self).text
+          print(durl)
           if durl == "" : return None 
           res = self.download_file( durl , fname )
           return pd.read_excel(res) if is_dataframe else res 
@@ -256,6 +257,10 @@ class IkeaDownloader(BaseIkea) :
       def einvoice_json(self,fromd,tod,bills) : 
            return self.report( "ikea/einvoice_json",r'(":val1":").{8}(",":val2":").{8}(.*":val9":")[^"]*' , 
                               (fromd.strftime("%Y%m%d"),tod.strftime("%Y%m%d"),",".join(bills)) , is_dataframe = False )
+
+      def pending_statement_pdf(self,beats,date) : 
+           return self.report( "ikea/pending_statement_pdf",r'(":val6":")[^"]*(.*":val8":").{10}' , 
+                              (",".join(beats),date.strftime("%Y-%m-%d")) , is_dataframe = False )
 
       def upload_irn(self,bytesio) : 
           files = {'file': ( "IRNGenByMe.xlsx" , bytesio )}

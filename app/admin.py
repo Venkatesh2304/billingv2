@@ -208,13 +208,12 @@ def run_billing_process(billing_log: models.Billing,billing_form : forms.Form) :
     creditrelease = creditrelease.to_dict(orient="records")
 
     def filter_orders_fn(order: pd.Series) : 
-        return all([
+        return ((today == order_date) and all([
               order.on.count() <= max_lines ,
               (order.on.iloc[0] not in today_bill_values) or abs((order.t * order.cq).sum() - today_bill_values[order.on.iloc[0]]) <= 1 , 
               "WHOLE" not in order.m.iloc[0] ,
               (order.t * order.cq).sum() >= 200
-            #  (order.on.iloc[0] not in today_lines_count) or (today_lines_count[order.on.iloc[0]] == order.on.count()) ,  
-        ]) or (order.on.iloc[0] in forced_order_nos)
+            ])) or (order.on.iloc[0] in forced_order_nos)
 
     ##Intiate the Ikea Billing Session
     order_objects:list[models.Orders] = []
@@ -229,6 +228,10 @@ def run_billing_process(billing_log: models.Billing,billing_form : forms.Form) :
         return
     
     ##Functions combing Ikea Session + Database 
+    def PrevDeliveryProcess() : 
+        billing.Prevbills()
+        models.Sales.objects.filter(inum__in = billing.prevbills).update(delivered = False)
+
     def CollectionProcess() : 
         billing.Collection()
         models.PushedCollection.objects.bulk_create([ models.PushedCollection(
@@ -276,6 +279,7 @@ def run_billing_process(billing_log: models.Billing,billing_form : forms.Form) :
         
     def ReportProcess() :
         sync_reports(billing,limits={"sales" : None , "adjustment" : None , "collection" : None })
+        models.Sales.objects.filter(inum__in = billing.prevbills).update(delivered = False)
         for order in order_objects :                     
             outstanding_qs = models.Outstanding.objects.filter(party = order.party,beat = order.beat.name,balance__lte = -1)
             today_bill_count = models.Sales.objects.filter(party = order.party,beat = order.beat.name,
@@ -306,7 +310,7 @@ def run_billing_process(billing_log: models.Billing,billing_form : forms.Form) :
         billing_log.save()
 
     ##Start the proccess
-    billing_process_functions = [ billing.Sync , billing.Prevbills ,  (lambda : billing.release_creditlocks(creditrelease)) , 
+    billing_process_functions = [ billing.Sync , PrevDeliveryProcess ,  (lambda : billing.release_creditlocks(creditrelease)) , 
                                   CollectionProcess ,  OrderProcess ,  DeliveryProcess , ReportProcess  ]   
     billing_process =  dict(zip(billing_process_names,billing_process_functions)) 
     billing_failed = False 
@@ -582,7 +586,7 @@ class BillingAdmin(BaseOrderAdmin) :
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         qs = qs.filter(creditlock=True) 
-        billing_qs = models.Billing.objects.filter(start_time__gte = datetime.datetime.now()  - datetime.timedelta(minutes=30)).order_by("-start_time")
+        billing_qs = models.Billing.objects.filter(start_time__gte = datetime.datetime.now()  - datetime.timedelta(minutes=120)).order_by("-start_time")
         for billing in billing_qs:
             order_status = models.BillingProcessStatus.objects.filter(billing=billing, process="ORDER").first()
             if order_status and order_status.status in [BillingStatus.Failed, BillingStatus.Success]:
@@ -792,14 +796,18 @@ class PrintAdmin(CustomAdminModel) :
                                                    party__name__istartswith=self.q).values_list("party__name",flat=True).distinct() #warning
             return parties 
 
-    list_display = ["bill","party","salesman","type","time","amount"]#,"einvoice","ctin"]
+    permissions = [Permission.change]
+    change_list_template = "form_and_changelist.html"
+    list_display = ["bill","party","salesman","type","time","delivered","amount"]#,"einvoice","ctin"]
     ordering = ["bill"]
     actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet","only_einvoice"]
     custom_views = [("retail","changelist_view"),("wholesale","changelist_view"),("print_party_autocomplete",PartyAutocomplete.as_view())]
-    list_per_page = 250 
+    list_per_page = 250
+    readonly_fields = ["bill","type","time"] 
 
     class PrintType(Enum):
         FIRST_COPY = "first_copy"
+        DOUBLE_FIRST_COPY = "double_first_copy"
         SECOND_COPY = "second_copy"
         LOADING_SHEET = "loading_sheet"
         LOADING_SHEET_SALESMAN = "loading_sheet_salesman"
@@ -840,7 +848,7 @@ class PrintAdmin(CustomAdminModel) :
             'group_bills' : False , 
         }
     }
-
+    PRINT_ACTION_CONFIG[PrintType.DOUBLE_FIRST_COPY] = PRINT_ACTION_CONFIG[PrintType.FIRST_COPY] | {"file_names":"bill.pdf,bill.pdf"}
 
     # Function to filter the bills for a given salesman 
     @staticmethod
@@ -878,7 +886,14 @@ class PrintAdmin(CustomAdminModel) :
                 salesman: functools.partial(self.get_salesman_bills, salesman)
                 for salesman in models.Beat.objects.all().values_list("salesman_name", flat=True).distinct()
             }),
+            create_simple_admin_list_filter("Delivered","bill__delivered",
+                                            {"Yes" : lambda qs : qs.filter(bill__delivered = True) ,
+                                             "No" : lambda qs : qs.filter(bill__delivered = False) }),
         ]
+    
+    @admin.display(boolean=True)
+    def delivered(self,obj):
+        return obj.bill.delivered
     
     def date(self,obj):
         return obj.bill.date
@@ -913,8 +928,8 @@ class PrintAdmin(CustomAdminModel) :
             view_name = request.resolver_match.view_name
             if view_name.endswith("retail") : title = "Retail Bills"
             if view_name.endswith("wholesale") : title = "Wholesale Bills"
-        bill_count = self.get_queryset(request).filter(time__isnull = True).count()
-        return super().changelist_view(request, extra_context | {"title" : f"{title} - {bill_count} Not Printed"  })
+        bill_count = self.get_queryset(request).filter(time__isnull = True,bill__date = datetime.date.today()).count()
+        return super().changelist_view(request, extra_context | {"title" : f"{title} - {bill_count} Not Printed Today"})
 
     def group_consecutive_bills(self,bills):
 
@@ -1031,10 +1046,10 @@ class PrintAdmin(CustomAdminModel) :
                     messages.success(request, mark_safe(f"Successfully printed {link}: {group[0]} - {group[-1]}"))
                 else:
                     messages.error(request, mark_safe(f"Bills failed to print {link}: {group[0]} - {group[-1]}"))
-            
-            
+                    
     def base_print_action(self, request, queryset, print_types):
-        einv_qs =  queryset.filter(bill__ctin__isnull=False, bill__einvoice__isnull=True).none() #warning
+        queryset = queryset.filter(bill__delivered = True)
+        einv_qs =  queryset.filter(bill__ctin__isnull=False, bill__einvoice__isnull=True) #warning #.none to prevent einvoice
         einv_count = einv_qs.count()
         einvoice_service = Einvoice()
 
@@ -1069,11 +1084,14 @@ class PrintAdmin(CustomAdminModel) :
 
     @admin.action(description="Both Copy")
     def both_copy(self, request, queryset):
-        return self.base_print_action(request, queryset, [self.PrintType.FIRST_COPY, self.PrintType.SECOND_COPY])
+        return self.base_print_action(request, queryset, [self.PrintType.FIRST_COPY,self.PrintType.SECOND_COPY]
+                 if request.resolver_match.view_name.endswith("retail") else [self.PrintType.DOUBLE_FIRST_COPY])
 
     @admin.action(description="First Copy")
     def first_copy(self, request, queryset):
-        return self.base_print_action(request, queryset, [self.PrintType.FIRST_COPY])
+        return self.base_print_action(request, queryset, [self.PrintType.FIRST_COPY]
+                 if request.resolver_match.view_name.endswith("retail") else [self.PrintType.DOUBLE_FIRST_COPY]
+        )
 
     @admin.action(description="Second Copy")
     def second_copy(self, request, queryset):
@@ -1412,8 +1430,27 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
                 models.BasepackProcessStatus.objects.all().delete()     
         refresh_time = 20000 if self.basepack_lock.locked() else 1e7 
         return super().changelist_view(request, extra_context | {"refresh_time" : refresh_time , "form" : form, "title" : "" })
-                
 
+class SalesmanPendingSheetAdmin(CustomAdminModel) : 
+    list_display =  ["name","salesman_name","days"]
+    actions = ["download_pending_sheet"]
+    
+    @admin.action(description='Download Pending Sheet')
+    def download_pending_sheet(self,request,queryset) : 
+        beat_ids = [ str(id) for id in queryset.values_list("id",flat=True) ]
+        bytesio = Billing().pending_statement_pdf(beat_ids,datetime.date.today())
+        response = HttpResponse(bytesio.getvalue(), content_type='application/vnd.ms-excel')
+        response['Content-Disposition'] = 'attachment; filename="' + f"pending_sheet_{','.join(beat_ids)}.xlsx" + '"'
+        return response 
+        
+    def get_queryset(self, request):
+        day = datetime.date.today().strftime("%A").lower()
+        return super().get_queryset(request).filter(days__contains = day)
+
+class CreditLockAdmin(CustomAdminModel) : 
+    permissions = [Permission.change]
+    list_display = ["party","beat","max_bills"]
+    
 
 class MyAdminSite(admin.AdminSite):
 
@@ -1451,6 +1488,7 @@ class MyAdminSite(admin.AdminSite):
                 "Outstanding": reverse("admin:app_outstanding_changelist"),
                 "Cheque": reverse("admin:app_bank_changelist"),
                 "Salesman Cheque": query_url("admin:app_salesmancollection_changelist" , {"time":"Today"}),
+                "Daily Sheet": reverse("admin:app_beat_changelist"),
             },
             "Others": {
                 "Beat Export": reverse("admin:app_basepackprocessstatus_changelist"),
@@ -1470,6 +1508,7 @@ admin_site.register(models.SalesmanCollection,SalesCollectionAdmin)
 admin_site.register(models.Print,PrintAdmin)
 admin_site.register(models.OrdersProxy,OrdersAdmin)
 admin_site.register(models.BasepackProcessStatus,BasepackAdmin)
+admin_site.register(models.Beat,SalesmanPendingSheetAdmin)
 
 
 
