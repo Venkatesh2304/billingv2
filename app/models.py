@@ -207,6 +207,10 @@ class Beat(models.Model) :
      def __str__(self) -> str:
           return self.name 
 
+class PendingSheet(Beat) :
+      class Meta:
+        proxy = True
+     
 # class BeatMapping(models.Model) :  pass
 
 class Print(models.Model) : 
@@ -215,6 +219,15 @@ class Print(models.Model) :
     type = models.TextField(max_length=20,choices=(("first_copy","First Copy"),("loading_sheet","Loading Sheet")),null=True,blank=True)
     reason = models.TextField(max_length=100,null=True,blank=True)
 
+class RetailPrint(Print):
+    class Meta:
+        proxy = True
+        verbose_name = "Retail Print"
+
+class WholeSalePrint(Print):
+    class Meta:
+        proxy = True
+        verbose_name = "WholeSale Print"
   
 class Outstanding(models.Model) : 
       party = ForeignKey("app.Party",on_delete=models.CASCADE)
@@ -266,6 +279,18 @@ class Einvoice(models.Model) :
       qrcode = models.TextField()
       date = models.DateField()
       json = models.TextField(null=True)
+
+
+class Eway(models.Model) : 
+      bill = models.OneToOneField("app.Sales",on_delete=models.DO_NOTHING,related_name="eway",db_constraint=False,primary_key=True)
+      ewb_no = models.TextField(null=True)
+      time = models.DateTimeField(null=True)
+      vehicle = ForeignKey("app.Vehicle",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING,null=True,related_name="bills")
+
+class Vehicle(models.Model) : 
+     name = models.CharField(max_length=30,primary_key=True)
+     vehicle_no = models.CharField(max_length=30)
+
 
 # class GstChanges(models.Model) : 
 #       inum = ForeignKey("app.Sales",on_delete=models.CASCADE,db_constraint=False,db_column="inum")

@@ -139,13 +139,11 @@ class IkeaDownloader(BaseIkea) :
       def collection(self,fromd,tod) : 
           df = self.report( "ikea/collection" , r'(":val10":").{10}(",":val11":").{10}(",":val12":"2018/04/01",":val13":").{10}', 
                        ( fromd.strftime("%Y/%m/%d")  , tod.strftime("%Y/%m/%d") , tod.strftime("%Y/%m/%d") ) )
-          df.to_excel("coll.xlsx")
           return df 
       
       def crnote(self,fromd,tod) : 
           crnote =  self.report("ikea/crnote" , r'(":val3":").{10}(",":val4":").{10}', ((fromd - datetime.timedelta(weeks=12)).strftime("%d/%m/%Y"),
                                                                                      tod.strftime("%d/%m/%Y")) )
-          crnote.to_excel("crnote.xlsx")
           date_column = "Adjusted/Collected/Cancelled Date"
           crnote[date_column] = pd.to_datetime(crnote[date_column],format="%Y-%m-%d")
           crnote = crnote[crnote[date_column].dt.date >= fromd][crnote[date_column].dt.date <= tod]
@@ -259,8 +257,11 @@ class IkeaDownloader(BaseIkea) :
                               (fromd.strftime("%Y%m%d"),tod.strftime("%Y%m%d"),",".join(bills)) , is_dataframe = False )
 
       def pending_statement_pdf(self,beats,date) : 
-           return self.report( "ikea/pending_statement_pdf",r'(":val6":")[^"]*(.*":val8":").{10}' , 
-                              (",".join(beats),date.strftime("%Y-%m-%d")) , is_dataframe = False )
+            r = get_curl("ikea/pending_statement_pdf")
+            r.data["strJsonParams"] = curl_replace(r'(beatVal":").{0}(.*colToDate":").{10}(.*colToDateHdr":").{10}', 
+                                  (",".join(beats),date.strftime("%Y-%m-%d") ,date.strftime("%d/%m/%Y")) , r.data["strJsonParams"])
+            durl = r.send(self).text
+            return self.download_file(durl)
 
       def upload_irn(self,bytesio) : 
           files = {'file': ( "IRNGenByMe.xlsx" , bytesio )}

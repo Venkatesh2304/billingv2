@@ -18,7 +18,8 @@
     <form method="post" action="{{ form.Action }}" enctype="multipart/form-data" style="display: flex;
     align-items: baseline;
     gap: 1.5rem;
-    padding-left: 10px;">
+    padding-left: 10px;
+    {% if form_style %} {{form_style}} {% endif %}">
         {% csrf_token %}
         {{ form.as_p }}
     </form>

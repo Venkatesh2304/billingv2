@@ -7,6 +7,8 @@ import functools
 from io import BytesIO
 import json
 import shutil
+
+from PyPDF2 import PdfReader, PdfWriter
 import custom.secondarybills  as secondarybills
 from dal import autocomplete
 import logging
@@ -798,12 +800,13 @@ class PrintAdmin(CustomAdminModel) :
 
     permissions = [Permission.change]
     change_list_template = "form_and_changelist.html"
-    list_display = ["bill","party","salesman","type","time","delivered","amount"]#,"einvoice","ctin"]
+    list_display = ["bill","party","salesman","type","time","delivered","einvoice","amount"]#,"einvoice","ctin"]
     ordering = ["bill"]
     actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet","only_einvoice"]
     custom_views = [("retail","changelist_view"),("wholesale","changelist_view"),("print_party_autocomplete",PartyAutocomplete.as_view())]
     list_per_page = 250
     readonly_fields = ["bill","type","time"] 
+    title = "All Bills"
 
     class PrintType(Enum):
         FIRST_COPY = "first_copy"
@@ -915,21 +918,11 @@ class PrintAdmin(CustomAdminModel) :
         return obj.bill.party.name
     
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
-        qs = super().get_queryset(request).filter(bill__date__gte = datetime.date.today() - datetime.timedelta(days=2)) #change
-        if request.resolver_match : 
-            view_name = request.resolver_match.view_name
-            if view_name.endswith("retail") : return qs.exclude(bill__beat__contains = "WHOLESALE")
-            if view_name.endswith("wholesale") : return qs.filter(bill__beat__contains = "WHOLESALE")
-        return qs 
- 
+        return super().get_queryset(request).filter(bill__date__gte = datetime.date.today() - datetime.timedelta(days=2)) #change
+
     def changelist_view(self, request: HttpRequest, extra_context = {}) -> TemplateResponse:
-        title = "All Bills"
-        if request.resolver_match : 
-            view_name = request.resolver_match.view_name
-            if view_name.endswith("retail") : title = "Retail Bills"
-            if view_name.endswith("wholesale") : title = "Wholesale Bills"
         bill_count = self.get_queryset(request).filter(time__isnull = True,bill__date = datetime.date.today()).count()
-        return super().changelist_view(request, extra_context | {"title" : f"{title} - {bill_count} Not Printed Today"})
+        return super().changelist_view(request, extra_context | {"title" : f"{self.title} - {bill_count} Not Printed Today"})
 
     def group_consecutive_bills(self,bills):
 
@@ -1049,7 +1042,7 @@ class PrintAdmin(CustomAdminModel) :
                     
     def base_print_action(self, request, queryset, print_types):
         queryset = queryset.filter(bill__delivered = True)
-        einv_qs =  queryset.filter(bill__ctin__isnull=False, bill__einvoice__isnull=True).none() #warning #.none to prevent einvoice
+        einv_qs =  queryset.filter(bill__ctin__isnull=False, bill__einvoice__isnull=True) #warning #.none to prevent einvoice
         einv_count = einv_qs.count()
         einvoice_service = Einvoice()
 
@@ -1077,21 +1070,17 @@ class PrintAdmin(CustomAdminModel) :
                     self.print_bills(request, billing, queryset, print_type)
             return 
 
-        
         captcha_img = einvoice_service.captcha()
         img_base64 = base64.b64encode(captcha_img).decode('utf-8')
         return render_confirmation_page("einvoice_login.html",request,queryset,{'image_data': img_base64})
 
     @admin.action(description="Both Copy")
     def both_copy(self, request, queryset):
-        return self.base_print_action(request, queryset, [self.PrintType.FIRST_COPY,self.PrintType.SECOND_COPY]
-                 if request.resolver_match.view_name.endswith("retail") else [self.PrintType.DOUBLE_FIRST_COPY])
+        return self.base_print_action(request, queryset, [self.PrintType.FIRST_COPY,self.PrintType.SECOND_COPY])
 
     @admin.action(description="First Copy")
     def first_copy(self, request, queryset):
-        return self.base_print_action(request, queryset, [self.PrintType.FIRST_COPY]
-                 if request.resolver_match.view_name.endswith("retail") else [self.PrintType.DOUBLE_FIRST_COPY]
-        )
+        return self.base_print_action(request, queryset, [self.PrintType.FIRST_COPY])
 
     @admin.action(description="Second Copy")
     def second_copy(self, request, queryset):
@@ -1120,6 +1109,22 @@ class PrintAdmin(CustomAdminModel) :
     def only_einvoice(self, request, queryset):
         return self.base_print_action(request, queryset, [])
     
+class RetailPrintAdmin(PrintAdmin) : 
+    title = "Retail Bills"
+    def get_queryset(self, request):
+        return super().get_queryset(request).exclude(bill__beat__contains = "WHOLESALE")
+    
+class WholeSalePrintAdmin(PrintAdmin) : 
+    title = "WholeSale Bills"
+    actions = ["double_first_copy"]
+    
+    @admin.action(description="Double First Copy")
+    def double_first_copy(self, request, queryset):
+        return self.base_print_action(request, queryset, [self.PrintType.DOUBLE_FIRST_COPY])
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(bill__beat__contains = "WHOLESALE")
+
 class BankAdmin(CustomAdminModel) : 
 
     class BankCollectionInline(admin.TabularInline) : 
@@ -1431,21 +1436,65 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
         refresh_time = 20000 if self.basepack_lock.locked() else 1e7 
         return super().changelist_view(request, extra_context | {"refresh_time" : refresh_time , "form" : form, "title" : "" })
 
-class SalesmanPendingSheetAdmin(CustomAdminModel) : 
+class SalesmanPendingSheetAdmin(CustomAdminModel) :
+     
+    change_list_template = "form_and_changelist.html"
     list_display =  ["name","salesman_name","days"]
     actions = ["download_pending_sheet"]
-    
+    list_filter = [ create_simple_admin_list_filter("Beat Day","days", { key: functools.partial(lambda days,qs: 
+                    qs.filter(days__contains = (datetime.date.today() + datetime.timedelta(days=days)).strftime("%A").lower() ) , no_of_days) 
+                    for key,no_of_days in [("Today",0),("Tommorow",1),("Day after Tommorow",2)] })]
+
     @admin.action(description='Download Pending Sheet')
     def download_pending_sheet(self,request,queryset) : 
         beat_ids = [ str(id) for id in queryset.values_list("id",flat=True) ]
-        bytesio = Billing().pending_statement_pdf(beat_ids,datetime.date.today())
-        response = HttpResponse(bytesio.getvalue(), content_type='application/vnd.ms-excel')
-        response['Content-Disposition'] = 'attachment; filename="' + f"pending_sheet_{','.join(beat_ids)}.xlsx" + '"'
+        billing = Billing()
+        writer = PdfWriter()
+
+        for beat_id in beat_ids :
+            bytesio = billing.pending_statement_pdf([beat_id],datetime.date.today())
+            reader = PdfReader(bytesio)
+            for page in reader.pages:
+                writer.add_page(page)
+            if len(reader.pages) % 2 != 0:
+                writer.add_blank_page() 
+
+        combined_pdf = BytesIO()
+        writer.write(combined_pdf)
+        with open("pending_sheet.pdf","wb+") as f : f.write(combined_pdf.getvalue())
+        combined_pdf.seek(0)
+        messages.success(request,mark_safe(f"Download Pending Sheet : {hyperlink('/static/pending_sheet.pdf','PENDING_SHEET')}"))
+        response = HttpResponse(combined_pdf.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="' + f"pending_sheet.pdf" + '"'
         return response 
         
-    def get_queryset(self, request):
-        day = datetime.date.today().strftime("%A").lower()
-        return super().get_queryset(request).filter(days__contains = day)
+    def changelist_view(self, request, extra_context = {}) : 
+        class PendingSheetForm(forms.Form) : 
+            date = forms.DateField(initial=datetime.date.today() + datetime.timedelta(days = (datetime.datetime.now().hour > 3)) ,
+                                    widget=forms.DateInput(attrs={'type' : 'date'}))
+            beat_type = forms.ChoiceField(choices=(("Retail","Retail"),("Wholesale","Wholesale")),initial="Retail")
+            Submit = submit_button("Download")
+
+        form = PendingSheetForm()
+        if request.method == "POST" : 
+            if "Submit" in request.POST : 
+                form = PendingSheetForm(request.POST)
+                if form.is_valid() : 
+                    qs = self.model.objects.filter(days__contains = form.cleaned_data["date"].strftime("%A").lower())
+                    if form.cleaned_data["beat_type"] == "Retail" : 
+                        qs = qs.exclude(name__contains = "WHOLESALE")
+                    else :
+                        qs = qs.filter(name__contains = "WHOLESALE")
+                    self.download_pending_sheet(request,qs)
+
+
+
+        return super().changelist_view(request, extra_context | {"form" : form,"title":"",
+                                                                 "form_style":"margin-bottom:50px;border:2px solid"})
+    
+class EwayAdmin(CustomAdminModel) : 
+    list_display = ["bill","ewb_no","vehicle","time"]
+    
 
 class CreditLockAdmin(CustomAdminModel) : 
     permissions = [Permission.change]
@@ -1481,14 +1530,14 @@ class MyAdminSite(admin.AdminSite):
         navbar_data = {
             "Billing": reverse("admin:app_orders_changelist") ,
             "Print": {
-                "RETAIL": query_url("admin:retail" , {"printed":"Not Printed","_facets":"True","bill__date":"Today"}),
-                "WHOLESALE": query_url("admin:wholesale" , {"printed":"Not Printed","_facets":"True","bill__date":"Today"}),
+                "RETAIL": query_url("admin:app_retailprint_changelist" , {"printed":"Not Printed","_facets":"True","bill__date":"Today"}),
+                "WHOLESALE": query_url("admin:app_wholesaleprint_changelist" , {"printed":"Not Printed","_facets":"True","bill__date":"Today"}),
             },
             "Collection": {
                 "Outstanding": reverse("admin:app_outstanding_changelist"),
                 "Cheque": reverse("admin:app_bank_changelist"),
                 "Salesman Cheque": query_url("admin:app_salesmancollection_changelist" , {"time":"Today"}),
-                "Daily Sheet": reverse("admin:app_beat_changelist"),
+                "Pending Sheet": query_url("admin:app_pendingsheet_changelist" , {"date":"Today"}),
             },
             "Others": {
                 "Beat Export": reverse("admin:app_basepackprocessstatus_changelist"),
@@ -1500,15 +1549,18 @@ class MyAdminSite(admin.AdminSite):
 admin_site = MyAdminSite(name='myadmin')
 admin_site.has_permission = lambda r: setattr(r, 'user', AccessUser()) or True # type: ignore
 
-
 admin_site.register(models.Orders,BillingAdmin)
 admin_site.register(models.Outstanding,OutstandingAdmin)
 admin_site.register(models.Bank,BankAdmin)
 admin_site.register(models.SalesmanCollection,SalesCollectionAdmin)
+
+
 admin_site.register(models.Print,PrintAdmin)
+admin_site.register(models.RetailPrint,RetailPrintAdmin)
+admin_site.register(models.WholeSalePrint,WholeSalePrintAdmin)
+
+admin_site.register(models.Eway,EwayAdmin)
+
 admin_site.register(models.OrdersProxy,OrdersAdmin)
 admin_site.register(models.BasepackProcessStatus,BasepackAdmin)
-admin_site.register(models.Beat,SalesmanPendingSheetAdmin)
-
-
-
+admin_site.register(models.PendingSheet,SalesmanPendingSheetAdmin)
