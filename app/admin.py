@@ -1049,7 +1049,7 @@ class PrintAdmin(CustomAdminModel) :
                     
     def base_print_action(self, request, queryset, print_types):
         queryset = queryset.filter(bill__delivered = True)
-        einv_qs =  queryset.filter(bill__ctin__isnull=False, bill__einvoice__isnull=True) #warning #.none to prevent einvoice
+        einv_qs =  queryset.filter(bill__ctin__isnull=False, bill__einvoice__isnull=True).none() #warning #.none to prevent einvoice
         einv_count = einv_qs.count()
         einvoice_service = Einvoice()
 
