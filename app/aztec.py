@@ -1,5 +1,5 @@
 # pdf_utils.py
-
+import fitz 
 from io import BytesIO
 import re
 import traceback
