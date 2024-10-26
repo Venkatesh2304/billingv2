@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aztec Code Scanner</title>
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
+        #scanner {
+            width: 100%; /* Make it responsive */
+            height: auto;
+        }
+        h1, h2 {
+            margin: 20px 0;
+        }
+        #result {
+            font-size: 1.5em;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Aztec Code Scanner</h1>
+    <video id="scanner" width="100%" height="auto"></video> <!-- Video element for camera -->
+    <h2 id="result">Scan an Aztec code</h2>
+    <audio id="notification-sound" src="/static/notification.mp3" preload="auto"></audio>
+
+    <script>
+        const codeReader = new ZXing.BrowserMultiFormatReader();
+        let scanning = true; // State variable to control scanning
+
+        function startScanning(selectedDeviceId) {
+            codeReader.decodeFromVideoDevice(selectedDeviceId, 'scanner', (result, err) => {
+                if (result && scanning) {
+                    scanning = false; // Stop scanning
+                    const barcode = result.text;
+                    document.getElementById('result').innerText = 'Scanning: ' + barcode;
+
+                    fetch(`/app/pendingsheet/get_bill/${barcode}`)
+                        .then(response => response.json())
+                        .then(data => {
+                            const notificationSound = document.getElementById('notification-sound');
+                            if (data.name) {
+                                // Play the notification sound
+                                notificationSound.play();
+                                document.getElementById('result').innerText = `${data.name}`;
+
+                                // Hide product info after 3 seconds
+                                setTimeout(() => {
+                                    document.getElementById('result').innerText = 'Scan an Aztec code';
+                                    scanning = true; // Restart scanning
+                                }, 3000);
+                            } else {
+                                document.getElementById('result').innerText = 'Bill not found';
+                                scanning = true; // Restart scanning if product not found
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error fetching bill:', error);
+                            scanning = true; // Restart scanning on error
+                        });
+                }
+                if (err && scanning) {
+                    console.error(err);
+                }
+            });
+        }
+
+        codeReader
+            .listVideoInputDevices()
+            .then(videoInputDevices => {
+                // Filter to find the back camera
+                const backCamera = videoInputDevices.find(device => device.label.toLowerCase().includes('back'));
+                const selectedDeviceId = backCamera ? backCamera.deviceId : videoInputDevices[0].deviceId; // Fallback to the first camera if no back camera is found
+
+                startScanning(selectedDeviceId); // Start scanning
+            })
+            .catch(err => console.error(err));
+    </script>
+</body>
+</html>

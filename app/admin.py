@@ -676,7 +676,6 @@ class OrdersAdmin(BaseOrderAdmin) :
     def rejected_changelist_view(self,request,extra_context = {}) : 
         return self._changelist_view("Rejected Orders",request,extra_context)
 
-
 class OutstandingAdmin(CustomAdminModel) : 
 
     change_list_template = "form_and_changelist.html"
@@ -692,7 +691,7 @@ class OutstandingAdmin(CustomAdminModel) :
 
     class OutstandingForm(forms.Form) : 
             date = forms.DateField(required=False,initial=datetime.date.today(),widget=forms.DateInput(attrs={'type' : 'date'}))
-            wholesale= forms.BooleanField(required=False,label="Include Wholesale",initial=True)
+            # wholesale= forms.Choice(required=False,label="Include Wholesale",initial=True)
             Submit = submit_button("Download")
             Action = reverse_lazy("admin:get-outstanding-report")
             
@@ -725,7 +724,7 @@ class OutstandingAdmin(CustomAdminModel) :
         outstanding = outstanding[~outstanding["party"].isin(IGNORED_PARTIES_FOR_OUTSTANDING)]
         outstanding["coll_amt"] = outstanding["bill_amt"] - outstanding["balance"]
         outstanding = outstanding[["salesman","beat","party","bill","bill_amt","coll_amt","balance","days","phone","weekday"]]
-        pivot_fn = lambda df : pd.pivot_table(df,index=["salesman","beat","party","bill"],values=['bill_amt','coll_amt','balance',"days","phone"],aggfunc = "first") # type: ignore
+        pivot_fn = lambda df : pd.pivot_table(df,index=["salesman","beat","party","bill"],values=['bill_amt','coll_amt','balance',"days","phone"],aggfunc = "first")[['bill_amt','coll_amt','balance',"days","phone"]] # type: ignore
         output = BytesIO()
         writer = pd.ExcelWriter(output, engine='xlsxwriter')
         pivot_fn(outstanding[ (outstanding.days >= 21) & outstanding.weekday.str.contains(day) ]).to_excel(writer, sheet_name='21 Days')
@@ -774,7 +773,6 @@ class SalesCollectionAdmin(CustomAdminModel) :
         models.SalesmanCollection.fetch_from_mongo()
         return super().changelist_view(request, extra_context = extra_context | {"title" : ""}) # type: ignore
         
-
 from django import forms
 from django.utils.translation import gettext_lazy as _
 from rangefilter.filters import NumericRangeFilter
@@ -1048,7 +1046,7 @@ class PrintAdmin(CustomAdminModel) :
                     
     def base_print_action(self, request, queryset, print_types):
         queryset = queryset.filter(bill__delivered = True)
-        einv_qs =  queryset.filter(bill__ctin__isnull=False, bill__einvoice__isnull=True).none() #warning #.none to prevent einvoice
+        einv_qs =  queryset.filter(bill__ctin__isnull=False, bill__einvoice__isnull=True) #warning #.none to prevent einvoice
         einv_count = einv_qs.count()
         einvoice_service = Einvoice()
 
@@ -1442,6 +1440,8 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
         refresh_time = 20000 if self.basepack_lock.locked() else 1e7 
         return super().changelist_view(request, extra_context | {"refresh_time" : refresh_time , "form" : form, "title" : "" })
 
+from django.http import JsonResponse
+
 class SalesmanPendingSheetAdmin(CustomAdminModel) :
      
     change_list_template = "form_and_changelist.html"
@@ -1451,6 +1451,15 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
                     qs.filter(days__contains = (datetime.date.today() + datetime.timedelta(days=days)).strftime("%A").lower() ) , no_of_days) 
                     for key,no_of_days in [("Today",0),("Tommorow",1),("Day after Tommorow",2)] })]
 
+    custom_views = [("scan_bills","scan_bills"),("get_bill/<str:inum>","get_bill")]
+
+    def scan_bills(self,request) : 
+        return render(request,"scanner.html")
+    
+    def get_bill(self,request,inum) : 
+        s = models.Sales.objects.filter(inum = inum).first()
+        return JsonResponse({"name" : str(s.inum) + "\n" + str(s.party) + "\n" + str(s.beat) + "\n" + s.date.strftime('%d-%b-%Y') })
+    
     @admin.action(description='Download Pending Sheet')
     def download_pending_sheet(self,request,queryset) : 
         beat_ids = [ str(id) for id in queryset.values_list("id",flat=True) ]

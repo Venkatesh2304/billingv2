@@ -16,7 +16,6 @@ from django import forms
 from django.middleware.csrf import get_token
 from openpyxl import load_workbook
 
-
 def basepack(request) :
     ikea = Billing()
     today = datetime.date.today()
