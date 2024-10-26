@@ -7,7 +7,7 @@ import functools
 from io import BytesIO
 import json
 import shutil
-from app.aztec import add_aztec_codes_to_pdf
+# from app.aztec import add_aztec_codes_to_pdf
 from PyPDF2 import PdfReader, PdfWriter
 import custom.secondarybills  as secondarybills
 from dal import autocomplete
