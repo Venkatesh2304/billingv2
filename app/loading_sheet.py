@@ -13,7 +13,7 @@ class PDF(FPDF):
         super().header()
 
         # Move to the top right corner
-        self.set_y(5)  # Adjust vertical position as needed
+        self.set_y(10)  # Adjust vertical position as needed
         # self.set_x(self.w - 30)  # Right margin minus padding
         
         # Print the page number on the right

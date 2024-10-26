@@ -7,7 +7,7 @@ import functools
 from io import BytesIO
 import json
 import shutil
-
+from app.aztec import add_aztec_codes_to_pdf
 from PyPDF2 import PdfReader, PdfWriter
 import custom.secondarybills  as secondarybills
 from dal import autocomplete
@@ -822,12 +822,14 @@ class PrintAdmin(CustomAdminModel) :
             'update_fields': {'type': PrintType.FIRST_COPY.value} ,
             'allow_printed'  : False , 
             'group_bills' : True , 
+            'barcode' : True 
         },
         PrintType.SECOND_COPY: {
             'create_bill': lambda billing, group, context: billing.Download(bills=group,pdf=False, txt=True) or secondarybills.main('bill.txt', 'bill.docx'),
             'file_names': "bill.docx" ,
             'allow_printed'  : True , 
             'group_bills' : True , 
+            'barcode' : False 
         },
         PrintType.LOADING_SHEET: {
             'create_bill': lambda billing, group, context: loading_sheet.create_pdf(billing.loading_sheet(group), 
@@ -835,6 +837,7 @@ class PrintAdmin(CustomAdminModel) :
             'file_names': "loading.pdf", 
             'allow_printed'  : True , 
             'group_bills' : False , 
+            'barcode' : False 
         },
         PrintType.LOADING_SHEET_SALESMAN: {
             'create_bill': lambda billing, group, context: loading_sheet.create_pdf(billing.loading_sheet(group), 
@@ -849,6 +852,7 @@ class PrintAdmin(CustomAdminModel) :
             'update_fields': {'type': PrintType.LOADING_SHEET.value} , 
             'allow_printed'  : False , 
             'group_bills' : False , 
+            'barcode' : False 
         }
     }
     PRINT_ACTION_CONFIG[PrintType.DOUBLE_FIRST_COPY] = PRINT_ACTION_CONFIG[PrintType.FIRST_COPY] | {"file_names":"bill.pdf,bill.pdf"}
@@ -1020,9 +1024,11 @@ class PrintAdmin(CustomAdminModel) :
 
             # Execute the create_bill action defined in the configuration
             config['create_bill'](billing, group, context)
-
-            # Print the file
             file_names = config['file_names'].split(",")
+            if config["barcode"] : 
+                for file_name in set(file_names) : add_aztec_codes_to_pdf(file_name,file_name)
+            
+            # Print the file
             status = billing.Printbill(bills = group,print_files=file_names)
             status = True  # placeholder
         
@@ -1494,11 +1500,6 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
     
 class EwayAdmin(CustomAdminModel) : 
     list_display = ["bill","ewb_no","vehicle","time"]
-    
-
-class CreditLockAdmin(CustomAdminModel) : 
-    permissions = [Permission.change]
-    list_display = ["party","beat","max_bills"]
     
 
 class MyAdminSite(admin.AdminSite):

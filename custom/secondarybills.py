@@ -51,7 +51,6 @@ def collection(file,document) :
   table.add_row([' '*20]*3)
  for i in range(0,len(first)) :
     y1=x[first[i]:last[i]+1]
-    #print(y1)
     for j in y1 :
         bill+=j+'\n'
         l=0
