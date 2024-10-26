@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 from django.urls import reverse
@@ -89,8 +90,9 @@ WSGI_APPLICATION = "billingv2.wsgi.application"
 
 STATICFILES_DIRS = [
     BASE_DIR ,
-    # BASE_DIR / "bills" ,
+    BASE_DIR / "bills" ,
 ]
+
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
