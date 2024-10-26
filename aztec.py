@@ -5,7 +5,6 @@ import re
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 
-import fitz
 import qrcode
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4

@@ -1082,7 +1082,7 @@ class PrintAdmin(CustomAdminModel) :
 
     @admin.action(description="Both Copy")
     def both_copy(self, request, queryset):
-        return self.base_print_action(request, queryset, [self.PrintType.FIRST_COPY,self.PrintType.SECOND_COPY])
+        return self.base_print_action(request, queryset, [self.PrintType.SECOND_COPY,self.PrintType.FIRST_COPY])
 
     @admin.action(description="First Copy")
     def first_copy(self, request, queryset):
