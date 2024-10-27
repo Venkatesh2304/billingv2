@@ -10,14 +10,14 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RenameModel(
-            old_name='Print',
-            new_name='Bill',
-        ),
         migrations.DeleteModel(
             name='RetailPrint',
         ),
         migrations.DeleteModel(
             name='WholeSalePrint',
+        ),
+        migrations.RenameModel(
+            old_name='Print',
+            new_name='Bill',
         ),
     ]
