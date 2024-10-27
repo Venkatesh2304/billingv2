@@ -7,7 +7,6 @@ import functools
 from io import BytesIO
 import json
 import shutil
-from app.aztec import add_aztec_codes_to_pdf
 from PyPDF2 import PdfReader, PdfWriter
 import custom.secondarybills  as secondarybills
 from dal import autocomplete
@@ -63,6 +62,16 @@ from urllib.parse import urlencode
 
 from rangefilter.filters import NumericRangeFilter
 import os 
+from requests.exceptions import JSONDecodeError
+
+class PrintType(Enum):
+    FIRST_COPY = "first_copy"
+    DOUBLE_FIRST_COPY = "double_first_copy"
+    SECOND_COPY = "second_copy"
+    LOADING_SHEET = "loading_sheet"
+    LOADING_SHEET_SALESMAN = "loading_sheet_salesman"
+
+import app.aztec as aztec 
 
 os.makedirs("bills/",exist_ok=True)
 
@@ -691,7 +700,7 @@ class OutstandingAdmin(CustomAdminModel) :
 
     class OutstandingForm(forms.Form) : 
             date = forms.DateField(required=False,initial=datetime.date.today(),widget=forms.DateInput(attrs={'type' : 'date'}))
-            # wholesale= forms.Choice(required=False,label="Include Wholesale",initial=True)
+            type = forms.ChoiceField(required=False,choices=(("Retail","Retail"),("Wholesale","Wholesale")),initial=True)
             Submit = submit_button("Download")
             Action = reverse_lazy("admin:get-outstanding-report")
             
@@ -717,11 +726,13 @@ class OutstandingAdmin(CustomAdminModel) :
         round(julianday('{date}') - julianday(date)) as days , 
         days as weekday 
         from app_outstanding left outer join app_beat on app_outstanding.beat = app_beat.name
-        where  balance <= -1
+        where  balance <= -1 
         """,is_select = True)  # type: ignore 
 
         IGNORED_PARTIES_FOR_OUTSTANDING = ["SUBASH ENTERPRISES","TIRUMALA AGENCY-P","TIRUMALA AGENCY-D","ANANDHA GENERAL MERCHANT-D-D-D"]
         outstanding = outstanding[~outstanding["party"].isin(IGNORED_PARTIES_FOR_OUTSTANDING)]
+        if form.cleaned_data["type"] == "Wholesale" : outstanding = outstanding[outstanding["beat"].str.contains("WHOLESALE")] 
+        if form.cleaned_data["type"] == "Retail" : outstanding = outstanding[~outstanding["beat"].str.contains("WHOLESALE")] 
         outstanding["coll_amt"] = outstanding["bill_amt"] - outstanding["balance"]
         outstanding = outstanding[["salesman","beat","party","bill","bill_amt","coll_amt","balance","days","phone","weekday"]]
         pivot_fn = lambda df : pd.pivot_table(df,index=["salesman","beat","party","bill"],values=['bill_amt','coll_amt','balance',"days","phone"],aggfunc = "first")[['bill_amt','coll_amt','balance',"days","phone"]] # type: ignore
@@ -798,59 +809,49 @@ class PrintAdmin(CustomAdminModel) :
 
     permissions = [Permission.change]
     change_list_template = "form_and_changelist.html"
-    list_display = ["bill","party","salesman","type","time","delivered","einvoice","amount"]#,"einvoice","ctin"]
+    list_display = ["bill","party","salesman","print_type","print_time","delivered","einvoice","amount","vehicle"]#,"einvoice","ctin"]
     ordering = ["bill"]
     actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet","only_einvoice"]
     custom_views = [("retail","changelist_view"),("wholesale","changelist_view"),("print_party_autocomplete",PartyAutocomplete.as_view())]
     list_per_page = 250
-    readonly_fields = ["bill","type","time"] 
+    readonly_fields = ["bill","print_type","print_time"] 
     title = "All Bills"
-
-    class PrintType(Enum):
-        FIRST_COPY = "first_copy"
-        DOUBLE_FIRST_COPY = "double_first_copy"
-        SECOND_COPY = "second_copy"
-        LOADING_SHEET = "loading_sheet"
-        LOADING_SHEET_SALESMAN = "loading_sheet_salesman"
 
     PRINT_ACTION_CONFIG = {
         PrintType.FIRST_COPY: {
-            'create_bill': lambda billing, group, context: billing.Download(bills=group,pdf=True, txt=False),
+            'create_bill': lambda billing, group, context: billing.Download(bills=group,pdf=True, txt=False) or 
+                    aztec.add_aztec_codes_to_pdf("bill.pdf","bill.pdf",PrintType.FIRST_COPY) ,
             'file_names': "bill.pdf",
-            'update_fields': {'type': PrintType.FIRST_COPY.value} ,
+            'update_fields': lambda context : {'print_type': PrintType.FIRST_COPY.value} ,
             'allow_printed'  : False , 
-            'group_bills' : True , 
-            'barcode' : True 
         },
         PrintType.SECOND_COPY: {
-            'create_bill': lambda billing, group, context: billing.Download(bills=group,pdf=False, txt=True) or secondarybills.main('bill.txt', 'bill.docx'),
+            'create_bill': lambda billing, group, context: billing.Download(bills=group,pdf=False, txt=True) or 
+                                                            secondarybills.main('bill.txt', 'bill.docx',aztec.generate_aztec_code),
             'file_names': "bill.docx" ,
             'allow_printed'  : True , 
-            'group_bills' : True , 
-            'barcode' : False 
         },
         PrintType.LOADING_SHEET: {
             'create_bill': lambda billing, group, context: loading_sheet.create_pdf(billing.loading_sheet(group), 
                                                                                     sheet_type=loading_sheet.LoadingSheetType.Plain),
             'file_names': "loading.pdf", 
             'allow_printed'  : True , 
-            'group_bills' : False , 
-            'barcode' : False 
         },
         PrintType.LOADING_SHEET_SALESMAN: {
-            'create_bill': lambda billing, group, context: loading_sheet.create_pdf(billing.loading_sheet(group), 
-                                                                           sheet_type=loading_sheet.LoadingSheetType.Salesman, 
-                                                                            context=context),
+            'create_bill': lambda billing, group, context: 
+                    loading_sheet.create_pdf(billing.loading_sheet(group), sheet_type=loading_sheet.LoadingSheetType.Salesman,
+                                                context=context) or 
+                    aztec.add_aztec_codes_to_pdf("loading.pdf","loading.pdf",PrintType.LOADING_SHEET_SALESMAN) ,
             'file_names': "loading.pdf,loading.pdf",
             'get_context': lambda request,queryset: {
                 'salesman': models.Beat.objects.filter(name = queryset.first().bill.beat).first().salesman_name if queryset.exists() else '' , 
                 'beat': queryset.first().bill.beat if queryset.exists() else '' , 
-                'party' : request.POST.get("party_name","SALESMAN").upper() or "SALESMAN" , 
+                'party' : request.POST.get("party_name") , 
+                'inum' : "SM" + queryset.first().bill.inum  ,
             },
-            'update_fields': {'type': PrintType.LOADING_SHEET.value} , 
+            'update_fields': lambda context : {'print_type': PrintType.LOADING_SHEET.value , 
+                                               'loading_sheet' : models.SalesmanLoadingSheet.objects.create(**context) } , 
             'allow_printed'  : False , 
-            'group_bills' : False , 
-            'barcode' : False 
         }
     }
     PRINT_ACTION_CONFIG[PrintType.DOUBLE_FIRST_COPY] = PRINT_ACTION_CONFIG[PrintType.FIRST_COPY] | {"file_names":"bill.pdf,bill.pdf"}
@@ -883,7 +884,7 @@ class PrintAdmin(CustomAdminModel) :
                         for key,no_of_days in [("Today",0),("Yesterday",1),("Day Before Yesterday",2)] }
         return [
             create_simple_admin_list_filter("Printed ?", "printed", {
-                'Not Printed': lambda qs: qs.filter(time__isnull=True)
+                'Not Printed': lambda qs: qs.filter(print_time__isnull=True)
             }),
             # ("bill_id",create_admin_form_filter("Bill",BillRangeForm)),
             create_simple_admin_list_filter("Bill Date","bill__date",date_filter_fn),
@@ -923,41 +924,9 @@ class PrintAdmin(CustomAdminModel) :
         return super().get_queryset(request).filter(bill__date__gte = datetime.date.today() - datetime.timedelta(days=2)) #change
 
     def changelist_view(self, request: HttpRequest, extra_context = {}) -> TemplateResponse:
-        bill_count = self.get_queryset(request).filter(time__isnull = True,bill__date = datetime.date.today()).count()
+        sync_reports(limits={"sales":5*60})
+        bill_count = self.get_queryset(request).filter(print_time__isnull = True,bill__date = datetime.date.today()).count()
         return super().changelist_view(request, extra_context | {"title" : f"{self.title} - {bill_count} Not Printed Today"})
-
-    def group_consecutive_bills(self,bills):
-
-        def extract_serial(bill_number):
-            match = re.search(r'(\D+)(\d{5})$', bill_number)
-            if match:
-                return match.group(1), int(match.group(2))  # Return prefix and serial number as a tuple
-            return None, None
-
-        sorted_bills = sorted(bills, key=lambda x: extract_serial(x))
-
-        groups = []
-        current_group = []
-        prev_prefix, prev_serial = None, None
-
-        for bill in sorted_bills:
-            prefix, serial = extract_serial(bill)
-            if not prefix:
-                continue
-
-            if prev_prefix == prefix and prev_serial is not None and serial == prev_serial + 1:
-                current_group.append(bill)
-            else:
-                if current_group:
-                    groups.append(current_group)
-                current_group = [bill]
-
-            prev_prefix, prev_serial = prefix, serial
-
-        if current_group:
-            groups.append(current_group)
-
-        return groups
 
     def handle_einvoice_upload(self,request,einv_qs):
         # Aggregate date range for the invoices
@@ -982,27 +951,22 @@ class PrintAdmin(CustomAdminModel) :
 
         # Process today's e-invoices
         today_einvs_bytesio = BytesIO(Einvoice().get_today_einvs())
-        response = billing.upload_irn(today_einvs_bytesio)
+        try :
+            response = billing.upload_irn(today_einvs_bytesio)
+        except JSONDecodeError as e : 
+            messages.error(request,"Error uploading irn to ikea")
 
         # Handle IRN upload failures
         if not response["valid"]:
             raise Exception(f"IRN Upload Failed: {response}")
 
         # Process the successful e-invoices
-        einvoice_df = pd.read_excel(today_einvs_bytesio).rename(columns={
-            "Ack Date": "date",
-            "IRN": "irn",
-            "SignedQrCOde": "qrcode",
-            "Doc No": "bill_id"
-        })
-
-        einvoice_df = einvoice_df[["bill_id", "qrcode", "date", "irn"]]
-
-        # Bulk insert or update the e-invoice data
-        bulk_raw_insert("einvoice", einvoice_df, upsert=True)
-        
+        einvoice_df = pd.read_excel(today_einvs_bytesio)
+        for row in einvoice_df : 
+            models.Bill.objects.filter(bill_id = row["Doc No"]).update(irn = "IRN")
+                
         # Remove successfully processed invoices from the failed list
-        processed_bills = einvoice_df["bill_id"].values
+        processed_bills = einvoice_df["Doc No"].values
         failed_inums = list(set(failed_inums) - set(processed_bills))
 
         return failed_inums
@@ -1011,42 +975,37 @@ class PrintAdmin(CustomAdminModel) :
 
         config = self.PRINT_ACTION_CONFIG[print_type]
         bills = [bill.bill_id for bill in queryset]
-        groups = self.group_consecutive_bills(bills) if config["group_bills"] else  [bills]
 
-        for group in groups:
-            # Get additional context for the action (like salesman details if needed)
-            context = {}
-            if config.get('get_context') :
-                context = config['get_context'](request,queryset)
-
-
-            # Execute the create_bill action defined in the configuration
-            config['create_bill'](billing, group, context)
-            file_names = config['file_names'].split(",")
-            if config["barcode"] : 
-                for file_name in set(file_names) : add_aztec_codes_to_pdf(file_name,file_name)
-            
-            # Print the file
-            status = billing.Printbill(bills = group,print_files=file_names)
-            status = True  # placeholder
+        # Get additional context for the action (like salesman details if needed)
+        context = {}
+        if config.get('get_context') :
+            context = config['get_context'](request,queryset)
         
-            # Update the queryset if required by the action
-            if status and 'update_fields' in config:
-                queryset.update(**config['update_fields'], time=datetime.datetime.now())
-             
-            for file_name in list(set(file_names)) : 
-                renamed_file = f"{file_name.split('.')[0]}_{group[0]}_{group[-1]}.{file_name.split('.')[1]}"
-                shutil.copyfile(file_name,f"bills/{renamed_file}")
-                # Generate the download link
-                link = hyperlink(f"/static/{renamed_file}",print_type.name.upper(),style="text-decoration:underline;color:blue;") 
-                if status:
-                    messages.success(request, mark_safe(f"Successfully printed {link}: {group[0]} - {group[-1]}"))
-                else:
-                    messages.error(request, mark_safe(f"Bills failed to print {link}: {group[0]} - {group[-1]}"))
+        config['create_bill'](billing, bills, context)
+        file_names = config['file_names'].split(",")
+        
+        # Print the file
+        status = billing.Printbill(bills = bills,print_files=file_names)
+        status = True  # placeholder
+    
+        # Update the queryset if required by the action
+        if status and 'update_fields' in config:
+            queryset.update(**config['update_fields'](context), print_time=datetime.datetime.now())
+         
+        for file_name in list(set(file_names)) : 
+            renamed_file = f"{file_name.split('.')[0]}_{bills[0]}_{bills[-1]}.{file_name.split('.')[1]}"
+            shutil.copyfile(file_name,f"bills/{renamed_file}")
+            # Generate the download link
+            link = hyperlink(f"/static/{renamed_file}",print_type.name.upper(),style="text-decoration:underline;color:blue;") 
+            if status:
+                messages.success(request, mark_safe(f"Successfully printed {link}: {bills[0]} - {bills[-1]}"))
+            else:
+                messages.error(request, mark_safe(f"Bills failed to print {link}: {bills[0]} - {bills[-1]}"))
                     
+
     def base_print_action(self, request, queryset, print_types):
         queryset = queryset.filter(bill__delivered = True)
-        einv_qs =  queryset.filter(bill__ctin__isnull=False, bill__einvoice__isnull=True) #warning #.none to prevent einvoice
+        einv_qs =  queryset.filter(bill__ctin__isnull=False, irn__isnull=True).none() #warning #.none to prevent einvoice
         einv_count = einv_qs.count()
         einvoice_service = Einvoice()
 
@@ -1064,12 +1023,12 @@ class PrintAdmin(CustomAdminModel) :
             bills = list(queryset.values_list('bill_id', flat=True))
             for print_type in print_types:
                 allow_already_printed = self.PRINT_ACTION_CONFIG[print_type]["allow_printed"]
-                queryset = models.Print.objects.filter(bill_id__in=bills)
+                queryset = models.Bill.objects.filter(bill_id__in=bills)
                 if not allow_already_printed: 
-                    already_printed = queryset.filter(time__isnull=False) 
+                    already_printed = queryset.filter(print_time__isnull=False) 
                     if already_printed and already_printed.exists():
                         messages.warning(request, f"Bills are already printed for {already_printed.values_list('bill_id', flat=True)}")
-                    self.print_bills(request, billing, queryset.filter(time__isnull=True), print_type)
+                    self.print_bills(request, billing, queryset.filter(print_time__isnull=True), print_type)
                 else : 
                     self.print_bills(request, billing, queryset, print_type)
             return 
@@ -1080,15 +1039,15 @@ class PrintAdmin(CustomAdminModel) :
 
     @admin.action(description="Both Copy")
     def both_copy(self, request, queryset):
-        return self.base_print_action(request, queryset, [self.PrintType.SECOND_COPY,self.PrintType.FIRST_COPY])
+        return self.base_print_action(request, queryset, [PrintType.SECOND_COPY,PrintType.FIRST_COPY])
 
     @admin.action(description="First Copy")
     def first_copy(self, request, queryset):
-        return self.base_print_action(request, queryset, [self.PrintType.FIRST_COPY])
+        return self.base_print_action(request, queryset, [PrintType.FIRST_COPY])
 
     @admin.action(description="Second Copy")
     def second_copy(self, request, queryset):
-        return self.base_print_action(request, queryset, [self.PrintType.SECOND_COPY])
+        return self.base_print_action(request, queryset, [PrintType.SECOND_COPY])
 
     @admin.action(description="Salesman Loading Sheet")
     def loading_sheet_salesman(self, request, queryset):
@@ -1101,13 +1060,13 @@ class PrintAdmin(CustomAdminModel) :
             Action = ""
         
         if "confirm_action" in request.POST : 
-            return self.base_print_action(request, queryset, [self.PrintType.LOADING_SHEET_SALESMAN])
+            return self.base_print_action(request, queryset, [PrintType.LOADING_SHEET_SALESMAN])
         else  :
             return render_confirmation_page("admin/base_custom_confirmation.html",request,queryset,extra_context={"form" : SalesmanLoadingSheetForm()})
 
     @admin.action(description="Plain Loading Sheet")
     def loading_sheet(self, request, queryset):
-        return self.base_print_action(request, queryset, [self.PrintType.LOADING_SHEET])
+        return self.base_print_action(request, queryset, [PrintType.LOADING_SHEET])
 
     @admin.action(description="Only E-Invoice")
     def only_einvoice(self, request, queryset):
@@ -1124,7 +1083,7 @@ class WholeSalePrintAdmin(PrintAdmin) :
     
     @admin.action(description="Double First Copy")
     def double_first_copy(self, request, queryset):
-        return self.base_print_action(request, queryset, [self.PrintType.DOUBLE_FIRST_COPY])
+        return self.base_print_action(request, queryset, [PrintType.DOUBLE_FIRST_COPY])
 
     def get_queryset(self, request):
         return super().get_queryset(request).filter(bill__beat__contains = "WHOLESALE")
@@ -1201,10 +1160,7 @@ class BankAdmin(CustomAdminModel) :
             value = sum([ coll.amt for coll in colls ])
             return render_confirmation_page('push_collection_confirmation.html',request,queryset,extra_context={ 
                         "total_chqs":len(chqs),"total_bills" : len(colls) , "amt" : value , "show_objects" : True , "show_cancel_btn":  True ,
-            })
-
-          
-        sdf
+            })   
         billing = Billing()
         coll:pd.DataFrame = billing.download_manual_collection() # type: ignore
         manual_coll = []
@@ -1451,15 +1407,6 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
                     qs.filter(days__contains = (datetime.date.today() + datetime.timedelta(days=days)).strftime("%A").lower() ) , no_of_days) 
                     for key,no_of_days in [("Today",0),("Tommorow",1),("Day after Tommorow",2)] })]
 
-    custom_views = [("scan_bills","scan_bills"),("get_bill/<str:inum>","get_bill")]
-
-    def scan_bills(self,request) : 
-        return render(request,"scanner.html")
-    
-    def get_bill(self,request,inum) : 
-        s = models.Sales.objects.filter(inum = inum).first()
-        return JsonResponse({"name" : str(s.inum) + "\n" + str(s.party) + "\n" + str(s.beat) + "\n" + s.date.strftime('%d-%b-%Y') })
-    
     @admin.action(description='Download Pending Sheet')
     def download_pending_sheet(self,request,queryset) : 
         beat_ids = [ str(id) for id in queryset.values_list("id",flat=True) ]
@@ -1507,9 +1454,6 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
         return super().changelist_view(request, extra_context | {"form" : form,"title":"",
                                                                  "form_style":"margin-bottom:50px;border:2px solid"})
     
-class EwayAdmin(CustomAdminModel) : 
-    list_display = ["bill","ewb_no","vehicle","time"]
-    
 
 class MyAdminSite(admin.AdminSite):
 
@@ -1547,10 +1491,14 @@ class MyAdminSite(admin.AdminSite):
                 "Outstanding": reverse("admin:app_outstanding_changelist"),
                 "Cheque": reverse("admin:app_bank_changelist"),
                 "Salesman Cheque": query_url("admin:app_salesmancollection_changelist" , {"time":"Today"}),
-                "Pending Sheet": query_url("admin:app_pendingsheet_changelist" , {"date":"Today"}),
+                "Pending Sheet": query_url("admin:app_salesmanpendingsheet_changelist" , {"date":"Today"}),
             },
             "Others": {
                 "Beat Export": reverse("admin:app_basepackprocessstatus_changelist"),
+                "Scan": reverse("scan_bills"),
+            },
+            "Config": {
+                "Vehicle": reverse("admin:app_vehicle_changelist"),
             },
         }
         context['navbar_data'] = navbar_data
@@ -1565,12 +1513,15 @@ admin_site.register(models.Bank,BankAdmin)
 admin_site.register(models.SalesmanCollection,SalesCollectionAdmin)
 
 
-admin_site.register(models.Print,PrintAdmin)
+admin_site.register(models.Bill,PrintAdmin)
 admin_site.register(models.RetailPrint,RetailPrintAdmin)
 admin_site.register(models.WholeSalePrint,WholeSalePrintAdmin)
 
-admin_site.register(models.Eway,EwayAdmin)
 
 admin_site.register(models.OrdersProxy,OrdersAdmin)
 admin_site.register(models.BasepackProcessStatus,BasepackAdmin)
-admin_site.register(models.PendingSheet,SalesmanPendingSheetAdmin)
+admin_site.register(models.SalesmanPendingSheet,SalesmanPendingSheetAdmin)
+admin_site.register(models.Vehicle,None)
+admin_site.register(models.SalesmanLoadingSheet,None)
+
+# admin_site.register(models.Eway,EwayAdmin)

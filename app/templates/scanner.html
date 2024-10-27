@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -41,14 +42,14 @@
                     const barcode = result.text;
                     document.getElementById('result').innerText = 'Scanning: ' + barcode;
 
-                    fetch(`/app/pendingsheet/get_bill/${barcode}`)
+                    fetch(`/get_bill_data/${barcode}/{{ selected_vehicle }}`)
                         .then(response => response.json())
                         .then(data => {
                             const notificationSound = document.getElementById('notification-sound');
-                            if (data.name) {
+                            if (data.data) {
                                 // Play the notification sound
                                 notificationSound.play();
-                                document.getElementById('result').innerText = `${data.name}`;
+                                document.getElementById('result').innerText = `${data.data}`;
 
                                 // Hide product info after 3 seconds
                                 setTimeout(() => {

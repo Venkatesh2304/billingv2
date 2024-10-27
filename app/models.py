@@ -207,24 +207,36 @@ class Beat(models.Model) :
      def __str__(self) -> str:
           return self.name 
 
-class PendingSheet(Beat) :
+class SalesmanPendingSheet(Beat) :
       class Meta:
         proxy = True
      
-# class BeatMapping(models.Model) :  pass
-
-class Print(models.Model) : 
+class SalesmanLoadingSheet(models.Model) : 
+     inum = models.CharField(max_length=30,primary_key=True)
+     salesman = models.TextField(max_length=30)
+     party = models.TextField(max_length=30,null=True,blank=True)
+     beat = models.TextField(max_length=30)
+     time = models.DateTimeField(auto_now_add=True)
+     
+     @property
+     def date(self) :
+          return self.time.date() 
+ 
+class Bill(models.Model) : 
     bill = models.OneToOneField("app.Sales",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING,primary_key=True)
-    time = models.DateTimeField(null=True,blank=True)
-    type = models.TextField(max_length=20,choices=(("first_copy","First Copy"),("loading_sheet","Loading Sheet")),null=True,blank=True)
+    print_time = models.DateTimeField(null=True,blank=True)
+    print_type = models.TextField(max_length=20,choices=(("first_copy","First Copy"),("loading_sheet","Loading Sheet")),null=True,blank=True)
     reason = models.TextField(max_length=100,null=True,blank=True)
+    loading_sheet = models.ForeignKey(SalesmanLoadingSheet,on_delete=models.DO_NOTHING,related_name="bills",null=True,blank=True)
+    vehicle = models.ForeignKey("app.Vehicle",on_delete=models.DO_NOTHING,related_name="bills",null=True,blank=True)
+    irn = models.TextField(null=True,blank=True)
 
-class RetailPrint(Print):
+class RetailPrint(Bill):
     class Meta:
         proxy = True
         verbose_name = "Retail Print"
 
-class WholeSalePrint(Print):
+class WholeSalePrint(Bill):
     class Meta:
         proxy = True
         verbose_name = "WholeSale Print"
@@ -258,38 +270,28 @@ class Outstanding(models.Model) :
             verbose_name_plural = 'Outstanding'
 
 
-# class OutstandingRaw(models.Model) : 
-#       party = ForeignKey("app.Party",on_delete=models.CASCADE)
-#       inum = CharField(max_length=20,primary_key=True)
-#       amt = FloatField(blank=True,null=True)
-#       beat = models.TextField(max_length=40)
-#       date = DateField()
-      
-#       def __str__(self) -> str:
-#            return self.inum 
-      
-#       class Meta : 
-#             managed = False 
 
 ## GST & Einvoice Related Models
 
-class Einvoice(models.Model) : 
-      bill = models.OneToOneField("app.Sales",on_delete=models.DO_NOTHING,related_name="einvoice",db_constraint=False,primary_key=True)
-      irn = models.TextField()
-      qrcode = models.TextField()
-      date = models.DateField()
-      json = models.TextField(null=True)
+# class Einvoice(models.Model) : 
+#       bill = models.OneToOneField("app.Sales",on_delete=models.DO_NOTHING,related_name="einvoice",db_constraint=False,primary_key=True)
+#       irn = models.TextField()
+#       qrcode = models.TextField()
+#       date = models.DateField()
+#       json = models.TextField(null=True)
 
 
-class Eway(models.Model) : 
-      bill = models.OneToOneField("app.Sales",on_delete=models.DO_NOTHING,related_name="eway",db_constraint=False,primary_key=True)
-      ewb_no = models.TextField(null=True)
-      time = models.DateTimeField(null=True)
-      vehicle = ForeignKey("app.Vehicle",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING,null=True,related_name="bills")
+# class Eway(models.Model) : 
+#       bill = models.OneToOneField("app.Sales",on_delete=models.DO_NOTHING,related_name="eway",db_constraint=False,primary_key=True)
+#       ewb_no = models.TextField(null=True)
+#       time = models.DateTimeField(null=True)
+#     #   vehicle = ForeignKey("app.Vehicle",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING,null=True,related_name="bills")
 
 class Vehicle(models.Model) : 
      name = models.CharField(max_length=30,primary_key=True)
      vehicle_no = models.CharField(max_length=30)
+     def __str__(self):
+          return self.name 
 
 
 # class GstChanges(models.Model) : 

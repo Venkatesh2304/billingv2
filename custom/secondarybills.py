@@ -3,8 +3,8 @@ from prettytable import PrettyTable,ALL
 from docx import Document
 from docx.shared import Inches,Length,Pt,Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-#import win32api
-def collection(file,document) :
+
+def collection(file,document,barcode_generator) :
  f=open(file)
  x1=f.read()
  f.close()
@@ -70,8 +70,6 @@ def collection(file,document) :
     billvalue2='Bill'+billvalue.split('Bill')[1]
     paragraph=document.add_paragraph(billvalue1)
     paragraph1=document.add_paragraph()
-    print(invoice[i].split('Invoice')[1].split(':')[1])
-    print(name)
     imp=invoice[i].split('Invoice')[1].split(':')[1]+'*'+name[i].split(':')[1]+'*'+'Amt :'+billvalue2.split(':')[1]
     imp=' '.join(imp.split())
     paragraph1=paragraph1.add_run('  '+'   '.join(imp.split('*')))
@@ -81,22 +79,30 @@ def collection(file,document) :
     paragraph3.alignment = 2
     paragraph3.font.size=Pt(12)
     paragraph3.bold=True
+
+    inum = invoice[i].split('Invoice')[1].split(':')[1].strip()  
+    barcode = document.add_picture(barcode_generator(inum))
+    barcode.width = Cm(2.5)
+    barcode.height = Cm(2.5)
+   #  barcode.paragraph_format.space_before = Cm(-1)
+
+
     f=open('config.txt')
     try : 
        lines = int(eval(f.read())['lines'])
     except : 
        lines=23
+
+    lines = 14
     f.close()
     if i%2 == 0:
      document.add_paragraph('\n'*lines) 
     else :
-      #document.add_paragraph()  
       document.add_page_break()
     
-      
-def main(file,outputfile):
+def main(file,outputfile,barcode_generator=None):
  document = Document()
- collection(file,document)
+ collection(file,document,barcode_generator)
  document.save(outputfile)
  #win32api.ShellExecute (0,'print',file.split('.')[0]+'.docx',None, '.', 0 )
  

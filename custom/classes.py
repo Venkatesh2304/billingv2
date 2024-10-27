@@ -28,6 +28,7 @@ from .secondarybills import main as secondarybills
 from .curl import get_curl , curl_replace 
 from .Session import Session,StatusCodeError
 from bs4 import BeautifulSoup
+from PyPDF2 import PdfMerger
 
 class IkeaPasswordExpired(Exception) :
     pass
@@ -265,7 +266,8 @@ class IkeaDownloader(BaseIkea) :
 
       def upload_irn(self,bytesio) : 
           files = {'file': ( "IRNGenByMe.xlsx" , bytesio )}
-          return self.post("/rsunify/app/stockmigration/eInvoiceIRNuploadFile",files=files).json()
+          res = self.post("/rsunify/app/stockmigration/eInvoiceIRNuploadFile",files=files)
+          return res.json()
 
 
 
@@ -484,15 +486,64 @@ class Billing(IkeaDownloader) :
         data = {"deliveryProcessVOList": delivery.to_dict(orient="records"), "returnPickList": []}
         self.post("/rsunify/app/deliveryprocess/savebill",json=data).json()
 
+    def group_consecutive_bills(self,bills):
+
+        def extract_serial(bill_number):
+            match = re.search(r'(\D+)(\d{5})$', bill_number)
+            if match:
+                return match.group(1), int(match.group(2))  # Return prefix and serial number as a tuple
+            return None, None
+
+        sorted_bills = sorted(bills, key=lambda x: extract_serial(x))
+
+        groups = []
+        current_group = []
+        prev_prefix, prev_serial = None, None
+
+        for bill in sorted_bills:
+            prefix, serial = extract_serial(bill)
+            if not prefix:
+                continue
+
+            if prev_prefix == prefix and prev_serial is not None and serial == prev_serial + 1:
+                current_group.append(bill)
+            else:
+                if current_group:
+                    groups.append(current_group)
+                current_group = [bill]
+
+            prev_prefix, prev_serial = prefix, serial
+
+        if current_group:
+            groups.append(current_group)
+
+        return groups
+
     def Download(self,bills = None,pdf=True,txt=True):
         if bills is not None : self.bills = bills 
         if len(self.bills) == 0 : return
         get_bill_durl = lambda billfrom,billto,report_type : self.get(f"/rsunify/app/commonPdfRptContrl/pdfRptGeneration?strJsonParams=%7B%22billFrom%22%3A%22{billfrom}%22%2C%22billTo%22%3A%22{billto}%22%2C%22reportType%22%3A%22{report_type}%22%2C%22blhVatFlag%22%3A2%2C%22shade%22%3A1%2C%22pack%22%3A%22910%22%2C%22damages%22%3Anull%2C%22halfPage%22%3A0%2C%22bp_division%22%3A%22%22%2C%22salesMan%22%3A%22%22%2C%22party%22%3A%22%22%2C%22market%22%3A%22%22%2C%22planset%22%3A%22%22%2C%22fromDate%22%3A%22%22%2C%22toDate%22%3A%22%22%2C%22veh_Name%22%3A%22%22%2C%22printId%22%3A0%2C%22printerName%22%3A%22TVS+MSP+250+Star%22%2C%22Lable_position%22%3A2%2C%22billType%22%3A2%2C%22printOption%22%3A%220%22%2C%22RptClassName%22%3A%22BILL_PRINT_REPORT%22%2C%22reptName%22%3A%22billPrint%22%2C%22RptId%22%3A%22910%22%2C%22freeProduct%22%3A%22Default%22%2C%22shikharQrCode%22%3Anull%2C%22rptTypOpt%22%3A%22pdf%22%2C%22gstTypeVal%22%3A%221%22%2C%22billPrint_isPrint%22%3A0%2C%22units_only%22%3A%22Y%22%7D").text
-     
-        self.billfrom, self.billto = self.bills[0],  self.bills[-1]
-        if pdf : self.download_file( get_bill_durl(self.billfrom,self.billto,"pdf") , "bill.pdf" )
-        if txt: self.download_file( get_bill_durl(self.billfrom,self.billto,"txt") , "bill.txt" )
-        
+        pdfs , txts = [], []
+        for group in self.group_consecutive_bills(self.bills) :
+            self.billfrom, self.billto = group[0],  group[-1]
+            if pdf : pdfs.append( self.download_file( get_bill_durl(self.billfrom,self.billto,"pdf")) )
+            if txt: txts.append( self.download_file( get_bill_durl(self.billfrom,self.billto,"txt")) )
+
+        if pdf :     
+            merger = PdfMerger()
+            for pdf_bytesio in pdfs:
+                pdf_bytesio.seek(0)  # Ensure each BytesIO stream is at the start
+                merger.append(pdf_bytesio)
+            with open("bill.pdf", "wb+") as f:
+                merger.write(f)
+            merger.close()
+        if txt : 
+            with open("bill.txt", "wb+") as merged_file:
+                for text_bytesio in txts :
+                    text_bytesio.seek(0) 
+                    merged_file.write(text_bytesio.read())
+                    merged_file.write(b"\n")
+
     def Printbill(self,bills = None,print_files = ["bill.pdf","bill.txt"]):
         if bills is not None : self.bills = bills 
         if len(self.bills) == 0 : return

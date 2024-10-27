@@ -34,12 +34,14 @@ from app.models import Orders,OrderProducts
 print( Orders.objects.filter(beat__isnull = True).all() )
 print( Outstanding.objects.filter(inum = "A34406").first().party.name )
 print( pd.read_sql(f"select * from app_sales where inum = 'A44406' ",connection)  )
-print( pd.read_sql(f"select * from app_collection where inum = 'A44406' ",connection)  )
+print( pd.read_sql(f"select * from app_bill",connection)  )
 
 
 cur = connection.cursor()
 
 cur.execute("DROP VIEW IF EXISTS app_outstandingraw")
+# cur.execute("DROP TABLE IF EXISTS app_SalesmanLoadingSheet")
+# cur.execute("CREATE TABLE app_print ( id int )")
 
 date = str(datetime.date.today()) 
 day = datetime.datetime.strptime(date,"%Y-%m-%d").strftime("%A").lower()

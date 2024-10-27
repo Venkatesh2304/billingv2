@@ -4,6 +4,7 @@ from io import BytesIO
 import json
 import time
 from django.http import HttpResponse, JsonResponse
+from django.shortcuts import render
 import pandas as pd
 
 from app.common import query_db
@@ -15,6 +16,8 @@ from django.db.models import Q
 from django import forms
 from django.middleware.csrf import get_token
 from openpyxl import load_workbook
+
+from app import models
 
 def basepack(request) :
     ikea = Billing()
@@ -93,6 +96,38 @@ def basepack(request) :
     response = HttpResponse(output.getvalue(), content_type='application/vnd.ms-excel')
     response['Content-Disposition'] = 'attachment; filename="' + f"basepack_{today}.xlsx" + '"'
     return response
+
+def scan_bills(request) : 
+    class VehicleForm(forms.Form):
+        vehicle_name = forms.ModelChoiceField(
+            queryset=models.Vehicle.objects.all(),
+            empty_label="Select a vehicle",
+            to_field_name='name', 
+            label='Choose a vehicle'
+        )
+
+    if request.method == 'POST':
+        form = VehicleForm(request.POST)
+        if form.is_valid():
+            selected_vehicle = form.cleaned_data['vehicle_name']
+            return render(request, 'scanner.html', {'selected_vehicle': selected_vehicle})
+    else:
+        form = VehicleForm() 
+
+    return render(request, 'vehicle_selection.html', {'form': form})
+
+def get_bill_data(request,inum,vehicle) : 
+    extra_txt = ""
+    if inum.startswith("SM") : 
+        s = models.SalesmanLoadingSheet.objects.filter(inum = inum).first()
+        extra_txt = "\n\nLoading Sheet Bills :\n" + "\n".join( s.bills.all().values_list("bill_id",flat=True) )
+        models.Bill.objects.filter(loading_sheet_id = inum).update(vehicle_id = vehicle)
+    else : 
+        s = models.Sales.objects.filter(inum = inum).first()
+        models.Bill.objects.filter(bill_id = inum).update(vehicle_id = vehicle)
+    data = [str(s.inum),str(s.party),str(s.beat),s.date.strftime('%d-%b-%Y')]
+    return JsonResponse({"data" : "\n".join(data) + extra_txt })
+    
 
 ##depricated
 class ManualPrintForm(forms.Form):

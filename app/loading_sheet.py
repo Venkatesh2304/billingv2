@@ -27,7 +27,7 @@ def calculate_col_widths(df, pdf):
     for col in df.columns:
         max_width = pdf.get_string_width(col) + 4  # Start with the header width
         for value in df[col]:
-            value_width = pdf.get_string_width(str(value)) + 4
+            value_width = pdf.get_string_width(str(value).replace(' ','X')) + 4
             max_width = max(max_width, value_width)
         col_widths.append(max_width)
     scale = 190/sum(col_widths)
@@ -106,9 +106,9 @@ def create_pdf(tables:tuple[pd.DataFrame],sheet_type:LoadingSheetType,context = 
 
     if sheet_type == LoadingSheetType.Salesman :
         header_table.append(["TIME",time,"","","VALUE",total_value])
-        print( context )
-        header_table.append(["SALESMAN",context["salesman"],"","","BEAT",context["beat"]])
-        header_table.append(["PARTY",context["party"],"","","TOTAL CASE",total_fc])
+        header_table.append(["SALESMAN",context["salesman"] ,"","","BEAT",context["beat"]])
+        header_table.append(["PARTY",(context["party"] or "SALESMAN").ljust(34).upper(),"","","TOTAL CASE",total_fc])
+        header_table.append(["BILL",context["inum"],"","","",""])
         df["Case"] = (df["FC"].apply(lambda x: int(x) if x else 0) + df["LC"].apply(lambda x: int(x) if x else 0)).astype(str).replace("0","")
         dfs = df[["No","Product Name","MRP","Case","Units","UPC","Gross Value"]]
         dfs.loc[len(dfs.index)] = ["","Total"] + [""] * 4 + [total_value]
