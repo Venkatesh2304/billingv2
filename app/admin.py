@@ -1409,12 +1409,13 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
         beat_ids = [ str(id) for id in queryset.values_list("id",flat=True) ]
         billing = Billing()
         writer = PdfWriter()
-
+        pdfs = []
         for beat_id in beat_ids :
-            bytesio = BytesIO()
-            bytesio = billing.pending_statement_pdf([beat_id],datetime.date.today())
-            print(beat_id)
-            with open(f"{beat_id}.pdf","wb+") as f : f.write(bytesio.getbuffer())
+            pdfs.append( billing.pending_statement_pdf([beat_id],datetime.date.today()) )
+            # print(beat_id)
+            # with open(f"{beat_id}.pdf","wb+") as f : f.write(bytesio.getbuffer())
+
+        for bytesio in pdfs :
             bytesio.seek(0)
             reader = PdfReader(bytesio)
             for page in reader.pages:
