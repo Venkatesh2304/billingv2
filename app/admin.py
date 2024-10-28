@@ -1002,7 +1002,6 @@ class PrintAdmin(CustomAdminModel) :
             else:
                 messages.error(request, mark_safe(f"Bills failed to print {link}: {bills[0]} - {bills[-1]}"))
                     
-
     def base_print_action(self, request, queryset, print_types):
         queryset = queryset.filter(bill__delivered = True)
         einv_qs =  queryset.filter(bill__ctin__isnull=False, irn__isnull=True) #warning #.none to prevent einvoice
