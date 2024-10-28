@@ -881,6 +881,88 @@ class Einvoice(Session) :
           with open("print_includes/bill.html","w+") as f  : f.write(html)
           os.system("google-chrome --headless --disable-gpu --print-to-pdf=print_includes/bill.pdf print_includes/bill.html")
 
+class Eway(Session) : 
+      key = "eway"
+      base_url = "https://ewaybillgst.gov.in"
+      home = "https://ewaybillgst.gov.in"
+      load_cookies = True 
+
+      def __init__(self) : 
+          super().__init__() 
+          self.cookies.set("ewb_ld_cookie",value = "292419338.20480.0000" , domain = "ewaybillgst.gov.in")         
+      
+      def captcha(self) : 
+          self.cookies.clear()
+          self.cookies.set("ewb_ld_cookie",value = "292419338.20480.0000" , domain = "ewaybillgst.gov.in")             
+          self.form = extractForm( self.get( '/Login.aspx' ).text )
+          img = self.get("/Captcha.aspx").content
+          print(self.form)
+          self.db.update_cookies( self.cookies )
+          self.db.update_user("form",json.dumps(self.form))
+          return img 
+          
+      def login(self,captcha) : 
+          r = get_curl("eway/login")
+          if type(self.form) == str : self.form = json.loads(self.form)
+          print( self.post('/Login.Aspx/GetKey') )
+          del self.form["btnCaptchaImage"]
+          del self.form["btnLogin"]
+          del self.form["__LASTFOCUS"]
+          salt = self.form["hidSalt"]
+          pwd = hashlib.sha256((myHash(self.config["pwd"]) + salt).encode()).hexdigest()       
+          r.data =  self.form | {'__EVENTTARGET':'btnLogin','txt_username': self.config["username"], 'txt_password': pwd , "txtCaptcha" : captcha}
+          response  = r.send(self)
+          is_success = (response.url == f"{self.base_url}/Home/MainMenu")
+          error_div  = BeautifulSoup(response.text, 'html.parser').find("div",{"class":"divError"})
+          error = error_div.text.strip() if (not is_success) and (error_div is not None) else ""
+          print( r.data )
+          print(self.config["pwd"],self.config["username"])
+          print(response.text)
+          if is_success : self.db.update_cookies( self.cookies )
+          return is_success,error 
+
+
+      def get_captcha(self):
+          ewaybillTaxPayer = "p5k4foiqxa1kkaiyv4zawf0c"   
+          self.cookies.set("ewaybillTaxPayer",value = ewaybillTaxPayer, domain = "ewaybillgst.gov.in" , path = "/")
+          return super().get_captcha()
+
+      def is_logged_in(self) : 
+           res = self.get("https://ewaybillgst.gov.in/mainmenu.aspx") #check if logined correctly .
+           if res.url == "https://ewaybillgst.gov.in/login.aspx" : 
+               return False 
+           else : return True 
+    
+      def upload(self,json_data) : 
+          if not self.is_logged_in() : return jsonify({ "err" : "login again."}) , 501 
+          bulk_home = self.get("https://ewaybillgst.gov.in/BillGeneration/BulkUploadEwayBill.aspx").text
+
+          files = { "ctl00$ContentPlaceHolder1$FileUploadControl" : ("eway.json", StringIO(json_data) ,'application/json')}
+          form = extractForm(bulk_home)
+          form["ctl00$lblContactNo"] = ""
+          try : del form["ctl00$ContentPlaceHolder1$btnGenerate"] , form["ctl00$ContentPlaceHolder1$FileUploadControl"]
+          except : pass 
+
+          upload_home = self.post("https://ewaybillgst.gov.in/BillGeneration/BulkUploadEwayBill.aspx" ,  files = files , data = form ).text
+          form = extractForm(upload_home)
+          
+          generate_home = self.post("https://ewaybillgst.gov.in/BillGeneration/BulkUploadEwayBill.aspx" , data = form ).text 
+          soup = BeautifulSoup(generate_home, 'html.parser')
+          table = str(soup.find(id="ctl00_ContentPlaceHolder1_BulkEwayBills"))
+          try :
+              excel = pd.read_html(StringIO(table))[0]
+          except : 
+             if "alert('Json Schema" in upload_home :  #json schema is wrong 
+                 with open("error_eway.json","w+") as f :  f.write(json_data)
+                 logging.error("Json schema is wrong")
+                 return {"status" : False , "err" : "Json Schema is Wrong"}
+          try : err = parseEwayExcel(excel)
+          except Exception as e : 
+                logging.error("Eway Parser failed")
+                excel.to_excel("error_eway.xlsx")
+          data = { "download" : excel.to_csv(index=False) }
+          return data
+
 ### DEPRECEATED
 # def myHash(str) : 
 #   hash_object = hashlib.md5(str.encode())

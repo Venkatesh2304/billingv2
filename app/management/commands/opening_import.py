@@ -6,12 +6,14 @@ from app.sales_import import CollectionInsert, PartyInsert
 import app.models as models
 from app.admin import sync_reports
 
-i = Billing()
-a = i.einvoice_json(datetime.date(2024,10,15),datetime.date.today(),["A49554"])  #A49554
+# i = Billing()
+# a = i.einvoice_json(datetime.date(2024,10,15),datetime.date.today(),["A49554"])  #A49554
 
-print(a)
-if a : 
-    with open("a.json","wb+") as f : f.write(a.getbuffer())
+# print(a)
+from custom.classes import Eway
+e= Eway()
+with open("a.png","wb+") as f : f.write(e.captcha())
+e.login(input(":"))
 
 
 # sync_reports(limits={"sales" : 5*60,"collection" : None ,"adjustment" : None })

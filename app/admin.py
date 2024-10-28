@@ -59,10 +59,10 @@ import app.loading_sheet as loading_sheet
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlencode
-
 from rangefilter.filters import NumericRangeFilter
 import os 
 from requests.exceptions import JSONDecodeError
+from django.http import JsonResponse
 
 class PrintType(Enum):
     FIRST_COPY = "first_copy"
@@ -1395,8 +1395,6 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
         refresh_time = 20000 if self.basepack_lock.locked() else 1e7 
         return super().changelist_view(request, extra_context | {"refresh_time" : refresh_time , "form" : form, "title" : "" })
 
-from django.http import JsonResponse
-
 class SalesmanPendingSheetAdmin(CustomAdminModel) :
      
     change_list_template = "form_and_changelist.html"
@@ -1414,6 +1412,9 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
 
         for beat_id in beat_ids :
             bytesio = billing.pending_statement_pdf([beat_id],datetime.date.today())
+            print(beat_id)
+            with open(f"{beat_id}.pdf","wb+") as f : f.write(bytesio.getbuffer())
+            bytesio.seek(0)
             reader = PdfReader(bytesio)
             for page in reader.pages:
                 writer.add_page(page)
@@ -1442,6 +1443,9 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
                 form = PendingSheetForm(request.POST)
                 if form.is_valid() : 
                     qs = self.model.objects.filter(days__contains = form.cleaned_data["date"].strftime("%A").lower())
+                    print( list(qs) )
+                    print( qs.values_list("salesman_name",flat=True))
+                    print( qs.values_list("name",flat=True) )
                     if form.cleaned_data["beat_type"] == "Retail" : 
                         qs = qs.exclude(name__contains = "WHOLESALE")
                     else :
