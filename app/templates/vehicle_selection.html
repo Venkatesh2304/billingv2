@@ -2,11 +2,80 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Select Vehicle</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delivery Scanner</title>
+    <style>
+        /* Center the form and set base styling */
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            padding: 0 5vw; /* Responsive padding for mobile devices */
+        }
+
+        /* Form container */
+        form {
+            width: 100%;          /* Use full width within padding constraints */
+            max-width: 80vw;       /* Constrain width to 80% of viewport */
+            padding: 5vw;          /* Responsive padding for mobile */
+            border-radius: 8px;
+            background-color: #ffffff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 6vw;       /* Scale heading for smaller screens */
+            margin-bottom: 4vw;
+            color: #333;
+        }
+
+        /* Input and button styling */
+        input, select, textarea {
+            width: 100%;
+            padding: 3vw;          /* Responsive padding */
+            margin: 1vw 0;
+            box-sizing: border-box;
+            font-size: 4vw;
+        }
+
+        button {
+            padding: 3vw;
+            width: 100%;
+            font-size: 4vw;
+            background-color: #007bff;
+            color: #ffffff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 2vw;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        /* Larger screen adjustments */
+        @media (min-width: 768px) {
+            h1 {
+                font-size: 2em;
+            }
+            form {
+                max-width: 400px;
+            }
+            input, select, textarea, button {
+                font-size: 1em;
+                padding: 10px;
+            }
+        }
+    </style>
 </head>
 <body>
-    <h1>Select a Vehicle</h1>
-    <form method="POST">
+    <form method="POST" action="/scan_bills">
         {% csrf_token %}
         {{ form.as_p }}  
         <button type="submit">Submit</button>

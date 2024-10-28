@@ -4,7 +4,7 @@ from io import BytesIO
 import json
 import time
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 import pandas as pd
 
 from app.common import query_db
@@ -18,6 +18,7 @@ from django.middleware.csrf import get_token
 from openpyxl import load_workbook
 
 from app import models
+from django.utils.safestring import mark_safe
 
 def basepack(request) :
     ikea = Billing()
@@ -97,37 +98,65 @@ def basepack(request) :
     response['Content-Disposition'] = 'attachment; filename="' + f"basepack_{today}.xlsx" + '"'
     return response
 
-def scan_bills(request) : 
-    class VehicleForm(forms.Form):
+class VehicleForm(forms.Form):
         vehicle_name = forms.ModelChoiceField(
             queryset=models.Vehicle.objects.all(),
             empty_label="Select a vehicle",
             to_field_name='name', 
             label='Choose a vehicle'
         )
+        type = forms.ChoiceField(choices=(("loading","Out For Delivery"),("delivery_success","Successful Delivered"),
+                                          ("delivery_failed","Failed Delivered")),initial="loading",required=False)
 
+def scan_bills(request) : 
+    form = VehicleForm() 
     if request.method == 'POST':
         form = VehicleForm(request.POST)
         if form.is_valid():
             selected_vehicle = form.cleaned_data['vehicle_name']
-            return render(request, 'scanner.html', {'selected_vehicle': selected_vehicle})
-    else:
-        form = VehicleForm() 
-
+            type = form.cleaned_data['type']
+            return render(request, 'scanner.html', {'selected_vehicle': selected_vehicle , "type" : type})
+    return render(request, 'vehicle_selection.html', {'form': form})
+    
+def vehicle_selection(request) : 
+    form = VehicleForm() 
     return render(request, 'vehicle_selection.html', {'form': form})
 
-def get_bill_data(request,inum,vehicle) : 
-    extra_txt = ""
-    if inum.startswith("SM") : 
-        s = models.SalesmanLoadingSheet.objects.filter(inum = inum).first()
-        extra_txt = "\n\nLoading Sheet Bills :\n" + "\n".join( s.bills.all().values_list("bill_id",flat=True) )
-        models.Bill.objects.filter(loading_sheet_id = inum).update(vehicle_id = vehicle)
-    else : 
-        s = models.Sales.objects.filter(inum = inum).first()
-        models.Bill.objects.filter(bill_id = inum).update(vehicle_id = vehicle)
-    data = [str(s.inum),str(s.party),str(s.beat),s.date.strftime('%d-%b-%Y')]
-    return JsonResponse({"data" : "\n".join(data) + extra_txt })
-    
+def get_bill_data(request):
+    if request.method == 'POST':
+        data = request.POST.get('data')
+        data = json.loads(data)
+        inum = data.get("inum")
+        vehicle = data.get("vehicle")
+        bill_type = data.get("type")
+        failure_reason = request.FILES.get("audio")
+
+        extra_txt = ""
+        configs = {
+            "loading": {"update_fields": {"vehicle_id": vehicle, "loading_time": datetime.datetime.now()}},
+            "delivery_success": {"update_fields": {"vehicle_id": vehicle, "delivered": True, "delivered_time": datetime.datetime.now()}},
+            "delivery_failed": {"update_fields": {"vehicle_id": vehicle, "delivered": False, "delivered_time": datetime.datetime.now()}}
+        }
+
+        if inum.startswith("SM"):
+            s = models.SalesmanLoadingSheet.objects.filter(inum=inum).first()
+            extra_txt = "\n\nLoading Sheet Bills :\n" + "\n".join(s.bills.all().values_list("bill_id", flat=True))
+            models.Bill.objects.filter(loading_sheet_id=inum).update(**configs[bill_type]["update_fields"])
+        else:
+            s = models.Sales.objects.filter(inum=inum).first()
+            models.Bill.objects.filter(bill_id=inum).update(**configs[bill_type]["update_fields"])
+
+        if failure_reason:
+            audio_path = f"voice_notes/{inum}_delivery_failure.ogg"
+            with open(audio_path, 'wb+') as destination:
+                for chunk in failure_reason.chunks():
+                    destination.write(chunk)
+
+        data = [str(s.inum), str(s.party), str(s.beat), s.date.strftime('%d-%b-%Y')]
+        return JsonResponse({"data": "\n".join(data) + extra_txt})
+
+    return redirect("vehicle_selection")
+
 
 ##depricated
 class ManualPrintForm(forms.Form):

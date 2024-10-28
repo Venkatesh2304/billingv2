@@ -12,3 +12,4 @@ db1.sqlite3
 db2.sqlite3
 .json
 bills/
+voice_notes/

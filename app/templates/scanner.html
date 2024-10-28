@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13,7 +12,7 @@
             padding: 20px;
         }
         #scanner {
-            width: 100%; /* Make it responsive */
+            width: 100%;
             height: auto;
         }
         h1, h2 {
@@ -23,65 +22,179 @@
             font-size: 1.5em;
             margin-top: 20px;
         }
+        #record-section {
+            display: none;
+            margin-top: 20px;
+        }
+        #record-btn, #stop-btn {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 1em;
+        }
     </style>
 </head>
 <body>
-    <h1>Aztec Code Scanner</h1>
-    <video id="scanner" width="100%" height="auto"></video> <!-- Video element for camera -->
-    <h2 id="result">Scan an Aztec code</h2>
+    <h1>
+    {% if type == "loading" %}
+        Outgoing Bills to Delivery
+    {% elif type == "delivery_success" %}
+        Delivery Bills to Godown
+    {% else %}
+        Failed Delivery (Return)
+    {% endif %}
+    </h1>
+
+    <video id="scanner" width="100%" height="auto"></video>
+    <h2 id="result">Scan</h2>
+    <audio id="audio-playback" controls style="display: none;"></audio>
+
+    <!-- Voice recording section, shown only for failed deliveries -->
+    <div id="record-section">
+        <button id="record-btn">Record Voice Note</button>
+        <button id="stop-btn" style="display:none;">Stop Recording</button>
+    </div>
+
     <audio id="notification-sound" src="/static/notification.mp3" preload="auto"></audio>
 
     <script>
         const codeReader = new ZXing.BrowserMultiFormatReader();
-        let scanning = true; // State variable to control scanning
-
+        let scanning = true;
+        let recorder, audioBlob, scannedBarcode;
+        
         function startScanning(selectedDeviceId) {
             codeReader.decodeFromVideoDevice(selectedDeviceId, 'scanner', (result, err) => {
                 if (result && scanning) {
-                    scanning = false; // Stop scanning
-                    const barcode = result.text;
-                    document.getElementById('result').innerText = 'Scanning: ' + barcode;
-
-                    fetch(`/get_bill_data/${barcode}/{{ selected_vehicle }}`)
-                        .then(response => response.json())
-                        .then(data => {
-                            const notificationSound = document.getElementById('notification-sound');
-                            if (data.data) {
-                                // Play the notification sound
-                                notificationSound.play();
-                                document.getElementById('result').innerText = `${data.data}`;
-
-                                // Hide product info after 3 seconds
-                                setTimeout(() => {
-                                    document.getElementById('result').innerText = 'Scan an Aztec code';
-                                    scanning = true; // Restart scanning
-                                }, 3000);
-                            } else {
-                                document.getElementById('result').innerText = 'Bill not found';
-                                scanning = true; // Restart scanning if product not found
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error fetching bill:', error);
-                            scanning = true; // Restart scanning on error
-                        });
+                    scanning = false;  // Stop scanning once a barcode is detected
+                    scannedBarcode = result.text;
+                    document.getElementById('result').innerText = 'Scanning: ' + scannedBarcode;
+        
+                    // Stop scanning
+                    codeReader.reset();
+        
+                    {% if type == "delivery_failed" %}
+                        // Show recording section and start recording process
+                        document.getElementById('record-section').style.display = 'block';
+                        setupRecording();
+                    {% else %}
+                        // Directly send POST request if no recording is required
+                        sendPostRequest();
+                    {% endif %}
                 }
+        
                 if (err && scanning) {
                     console.error(err);
                 }
             });
         }
-
-        codeReader
-            .listVideoInputDevices()
+        
+        function setupRecording() {
+            const recordBtn = document.getElementById('record-btn');
+            const stopBtn = document.getElementById('stop-btn');
+            const audioPlayback = document.getElementById('audio-playback');
+        
+            recordBtn.addEventListener('click', async () => {
+                if (!navigator.mediaDevices) return alert('Audio recording is not supported in this browser.');
+                
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                recorder = new MediaRecorder(stream);
+                let chunks = [];
+        
+                recorder.ondataavailable = event => chunks.push(event.data);
+                recorder.onstop = () => {
+                    audioBlob = new Blob(chunks, { type: 'audio/ogg; codecs=opus' });
+                    audioPlayback.src = URL.createObjectURL(audioBlob);
+                    audioPlayback.style.display = 'block';
+                    sendPostRequest();  // Send POST request after recording is complete
+                };
+        
+                recorder.start();
+                recordBtn.style.display = 'none';
+                stopBtn.style.display = 'inline';
+            });
+        
+            stopBtn.addEventListener('click', () => {
+                recorder.stop();  // Stop recording
+                recordBtn.style.display = 'inline';
+                stopBtn.style.display = 'none';
+            });
+        }
+        
+        function sendPostRequest() {
+            const data = {
+                inum: scannedBarcode,
+                vehicle: "{{ selected_vehicle }}",
+                type: "{{ type }}"
+            };
+        
+            if (audioBlob) {
+                // Create FormData to include audio if present
+                const formData = new FormData();
+                formData.append('audio', audioBlob, 'failure_note.ogg');
+                formData.append('data', JSON.stringify(data));
+        
+                fetch(`/get_bill_data/`, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => handleResponse(data))
+                .catch(error => handleError(error));
+            } else {
+                // No audioBlob, proceed with JSON payload only
+                fetch(`/get_bill_data/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}'
+                    },
+                    body: JSON.stringify(data)
+                })
+                .then(response => response.json())
+                .then(data => handleResponse(data))
+                .catch(error => handleError(error));
+            }
+        }
+        
+        function handleResponse(data) {
+            const notificationSound = document.getElementById('notification-sound');
+            const audioPlayback = document.getElementById('audio-playback'); // Get the audio playback element
+            
+            if (data.data) {
+                notificationSound.play();
+                document.getElementById('result').innerText = `${data.data}`;
+                
+                setTimeout(() => {
+                    document.getElementById('result').innerText = 'Scan';
+                    document.getElementById('record-section').style.display = 'none';  // Hide recording section
+                    audioPlayback.style.display = 'none';  // Hide audio playback
+                    audioPlayback.src = ''; // Clear the source to reset the player
+                    scanning = true;  // Enable scanning again
+                    startScanning();  // Restart scanning
+                }, 2000); // Allow a brief delay for notification to play
+            } else {
+                document.getElementById('result').innerText = 'Bill not found';
+                document.getElementById('record-section').style.display = 'none';  // Hide recording section
+                audioPlayback.style.display = 'none';  // Hide audio playback
+                audioPlayback.src = ''; // Clear the source to reset the player
+                scanning = true;  // Enable scanning again
+                startScanning();  // Restart scanning
+            }
+        }
+        
+        function handleError(error) {
+            console.error('Error fetching bill:', error);
+            scanning = true;
+        }
+        
+        // Initialize the scanner and set the selected camera
+        codeReader.listVideoInputDevices()
             .then(videoInputDevices => {
-                // Filter to find the back camera
                 const backCamera = videoInputDevices.find(device => device.label.toLowerCase().includes('back'));
-                const selectedDeviceId = backCamera ? backCamera.deviceId : videoInputDevices[0].deviceId; // Fallback to the first camera if no back camera is found
-
-                startScanning(selectedDeviceId); // Start scanning
+                const selectedDeviceId = backCamera ? backCamera.deviceId : videoInputDevices[0].deviceId;
+                startScanning(selectedDeviceId);
             })
             .catch(err => console.error(err));
-    </script>
+            </script>
 </body>
 </html>

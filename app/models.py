@@ -229,7 +229,10 @@ class Bill(models.Model) :
     reason = models.TextField(max_length=100,null=True,blank=True)
     loading_sheet = models.ForeignKey(SalesmanLoadingSheet,on_delete=models.DO_NOTHING,related_name="bills",null=True,blank=True)
     vehicle = models.ForeignKey("app.Vehicle",on_delete=models.DO_NOTHING,related_name="bills",null=True,blank=True)
+    loading_time = models.DateTimeField(null=True,blank=True)
+    delivered_time = models.DateTimeField(null=True,blank=True)
     irn = models.TextField(null=True,blank=True)
+    delivered = models.BooleanField(null=True,blank=True)
 
 class RetailPrint(Bill):
     class Meta:
@@ -241,6 +244,11 @@ class WholeSalePrint(Bill):
         proxy = True
         verbose_name = "WholeSale Print"
   
+class BillDelivery(Bill):
+    class Meta:
+        proxy = True
+        verbose_name = "Bill Delivery"
+
 class Outstanding(models.Model) : 
       party = ForeignKey("app.Party",on_delete=models.CASCADE)
       inum = CharField(max_length=20,primary_key=True)
@@ -290,7 +298,6 @@ class Outstanding(models.Model) :
 class Vehicle(models.Model) : 
      name = models.CharField(max_length=30,primary_key=True)
      vehicle_no = models.CharField(max_length=30)
-     time = models.DateTimeField(null=True)
 
      def __str__(self):
           return self.name 

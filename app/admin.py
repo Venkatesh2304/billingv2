@@ -74,6 +74,7 @@ class PrintType(Enum):
 import app.aztec as aztec 
 
 os.makedirs("bills/",exist_ok=True)
+os.makedirs("voice_notes/",exist_ok=True)
 
 def user_permission(s,*a,**kw) : 
     if a and False : return False #or "add" in a[0] "change" in a[0] or ("add" in a[0] ) 
@@ -807,9 +808,13 @@ class PrintAdmin(CustomAdminModel) :
                                                    party__name__istartswith=self.q).values_list("party__name",flat=True).distinct() #warning
             return parties 
 
+    @admin.display(boolean=True)
+    def delivered(obj):
+        return obj.bill.delivered
+    
     permissions = [Permission.change]
     change_list_template = "form_and_changelist.html"
-    list_display = ["bill","party","salesman","print_type","print_time","delivered","einvoice","amount","vehicle"]#,"einvoice","ctin"]
+    list_display = ["bill","party","salesman","print_type","print_time",delivered,"einvoice","amount","vehicle"]#,"einvoice","ctin"]
     ordering = ["bill"]
     actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet","only_einvoice"]
     custom_views = [("retail","changelist_view"),("wholesale","changelist_view"),("print_party_autocomplete",PartyAutocomplete.as_view())]
@@ -897,10 +902,7 @@ class PrintAdmin(CustomAdminModel) :
                                              "No" : lambda qs : qs.filter(bill__delivered = False) }),
         ]
     
-    @admin.display(boolean=True)
-    def delivered(self,obj):
-        return obj.bill.delivered
-    
+   
     def date(self,obj):
         return obj.bill.date
     
@@ -955,6 +957,7 @@ class PrintAdmin(CustomAdminModel) :
             response = billing.upload_irn(today_einvs_bytesio)
         except JSONDecodeError as e : 
             messages.error(request,"Error uploading irn to ikea")
+            return 
 
         # Handle IRN upload failures
         if not response["valid"]:
@@ -1086,6 +1089,15 @@ class WholeSalePrintAdmin(PrintAdmin) :
 
     def get_queryset(self, request):
         return super().get_queryset(request).filter(bill__beat__contains = "WHOLESALE")
+
+class BillDeliveryAdmin(CustomAdminModel) : 
+    list_display = ["bill_id","party","vehicle_id","loading_time","delivered","delivered_time"]
+    list_filter = ["vehicle_id","delivered"]
+    
+    def party(self,obj) : 
+        return obj.bill.party.name
+    
+    
 
 class BankAdmin(CustomAdminModel) : 
 
@@ -1510,6 +1522,7 @@ class MyAdminSite(admin.AdminSite):
             "Others": {
                 "Beat Export": reverse("admin:app_basepackprocessstatus_changelist"),
                 "Scan": reverse("scan_bills"),
+                "Bill Delivery": reverse("admin:app_billdelivery_changelist"),
             },
             "Config": {
                 "Vehicle": reverse("admin:app_vehicle_changelist"),
@@ -1531,6 +1544,7 @@ admin_site.register(models.Bill,PrintAdmin)
 admin_site.register(models.RetailPrint,RetailPrintAdmin)
 admin_site.register(models.WholeSalePrint,WholeSalePrintAdmin)
 
+admin_site.register(models.BillDelivery,BillDeliveryAdmin)
 
 admin_site.register(models.OrdersProxy,OrdersAdmin)
 admin_site.register(models.BasepackProcessStatus,BasepackAdmin)
