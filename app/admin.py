@@ -7,7 +7,7 @@ import functools
 from io import BytesIO
 import json
 import shutil
-from PyPDF2 import PdfReader, PdfWriter
+from PyPDF2 import PdfMerger, PdfReader, PdfWriter
 import custom.secondarybills  as secondarybills
 from dal import autocomplete
 import logging
@@ -1408,24 +1408,26 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
     def download_pending_sheet(self,request,queryset) : 
         beat_ids = [ str(id) for id in queryset.values_list("id",flat=True) ]
         billing = Billing()
-        writer = PdfWriter()
-        pdfs = []
         for beat_id in beat_ids :
-            pdfs.append( billing.pending_statement_pdf([beat_id],datetime.date.today()) )
-            # print(beat_id)
-            # with open(f"{beat_id}.pdf","wb+") as f : f.write(bytesio.getbuffer())
+            bytesio = billing.pending_statement_pdf([beat_id],datetime.date.today())
+            with open(f"bills/X{beat_id}.pdf","wb+") as f : f.write(bytesio.getbuffer())
+        
+        merger = PdfMerger()
+        for beat_id in beat_ids :
+            merger.append(f"bills/X{beat_id}.pdf")
 
-        for bytesio in pdfs :
-            bytesio.seek(0)
-            reader = PdfReader(bytesio)
-            for page in reader.pages:
-                writer.add_page(page)
-            if len(reader.pages) % 2 != 0:
-                writer.add_blank_page()
-            bytesio.close()
+        # writer = PdfWriter()
+        # for bytesio in pdfs :
+        #     bytesio.seek(0)
+        #     reader = PdfReader(bytesio)
+        #     for page in reader.pages:
+        #         writer.add_page(page)
+        #     if len(reader.pages) % 2 != 0:
+        #         writer.add_blank_page()
+        #     bytesio.close()
 
-        writer.write("pending_sheet.pdf")
-        writer.close()
+        merger.write("pending_sheet.pdf")
+        merger.close()
 
         # combined_pdf = BytesIO()
         # with open("pending_sheet.pdf","wb+") as f : f.write(combined_pdf.getvalue())
