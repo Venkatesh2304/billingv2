@@ -1411,6 +1411,7 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
         writer = PdfWriter()
 
         for beat_id in beat_ids :
+            bytesio = BytesIO()
             bytesio = billing.pending_statement_pdf([beat_id],datetime.date.today())
             print(beat_id)
             with open(f"{beat_id}.pdf","wb+") as f : f.write(bytesio.getbuffer())
