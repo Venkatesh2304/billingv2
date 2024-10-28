@@ -1412,10 +1412,16 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
             bytesio = billing.pending_statement_pdf([beat_id],datetime.date.today())
             with open(f"bills/X{beat_id}.pdf","wb+") as f : f.write(bytesio.getbuffer())
         
-        merger = PdfMerger()
+        writer = PdfWriter()
         for beat_id in beat_ids :
-            merger.append(f"bills/X{beat_id}.pdf")
-
+            reader = PdfReader(f"bills/X{beat_id}.pdf")
+            for page in reader.pages:
+                writer.add_page(page)
+            if len(reader.pages) % 2 != 0:
+                writer.add_blank_page()
+        writer.write("pending_sheet.pdf")
+        writer.close()
+            
         # writer = PdfWriter()
         # for bytesio in pdfs :
         #     bytesio.seek(0)
@@ -1425,9 +1431,6 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
         #     if len(reader.pages) % 2 != 0:
         #         writer.add_blank_page()
         #     bytesio.close()
-
-        merger.write("pending_sheet.pdf")
-        merger.close()
 
         # combined_pdf = BytesIO()
         # with open("pending_sheet.pdf","wb+") as f : f.write(combined_pdf.getvalue())
