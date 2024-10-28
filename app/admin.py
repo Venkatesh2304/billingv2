@@ -962,7 +962,7 @@ class PrintAdmin(CustomAdminModel) :
 
         # Process the successful e-invoices
         einvoice_df = pd.read_excel(today_einvs_bytesio)
-        for row in einvoice_df : 
+        for row in einvoice_df.iterrows() : 
             models.Bill.objects.filter(bill_id = row["Doc No"]).update(irn = "IRN")
                 
         # Remove successfully processed invoices from the failed list

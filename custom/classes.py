@@ -385,6 +385,7 @@ class Billing(IkeaDownloader) :
         delivery_req = get_curl("ikea/billing/getdelivery")
         delivery = delivery_req.send(self).json()["billHdBeanList"] or []
         self.prevbills = [ bill['blhRefrNo'] for bill in delivery ]
+        print( self.prevbills )
         self.logger.info(f"Previous Delivery :: {self.prevbills}")
 
     def Collection(self):
