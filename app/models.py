@@ -290,6 +290,8 @@ class Outstanding(models.Model) :
 class Vehicle(models.Model) : 
      name = models.CharField(max_length=30,primary_key=True)
      vehicle_no = models.CharField(max_length=30)
+     time = models.DateTimeField(null=True)
+
      def __str__(self):
           return self.name 
 
