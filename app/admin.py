@@ -1427,7 +1427,7 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
         # combined_pdf = BytesIO()
         # with open("pending_sheet.pdf","wb+") as f : f.write(combined_pdf.getvalue())
         # combined_pdf.seek(0)
-        # messages.success(request,mark_safe(f"Download Pending Sheet : {hyperlink('/static/pending_sheet.pdf','PENDING_SHEET')}"))
+        messages.success(request,mark_safe(f"Download Pending Sheet : {hyperlink('/static/pending_sheet.pdf','PENDING_SHEET')}"))
         # response = HttpResponse(combined_pdf.getvalue(), content_type='application/pdf')
         # response['Content-Disposition'] = 'attachment; filename="' + f"pending_sheet.pdf" + '"'
         # return response 
