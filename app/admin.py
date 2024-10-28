@@ -1419,6 +1419,7 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
                 writer.add_page(page)
             if len(reader.pages) % 2 != 0:
                 writer.add_blank_page()
+            
         writer.write("pending_sheet.pdf")
         writer.close()
             
