@@ -107,7 +107,7 @@ def create_pdf(tables:tuple[pd.DataFrame],sheet_type:LoadingSheetType,context = 
     if sheet_type == LoadingSheetType.Salesman :
         header_table.append(["TIME",time,"","","VALUE",total_value])
         header_table.append(["SALESMAN",context["salesman"] ,"","","BEAT",context["beat"]])
-        header_table.append(["PARTY",(context["party"] or "SALESMAN").ljust(34).upper(),"","","TOTAL CASE",str(int(total_fc) + str(total_lc))])
+        header_table.append(["PARTY",(context["party"] or "SALESMAN").ljust(34).upper(),"","","TOTAL CASE",str(int(total_fc or "0") + int(total_lc or "0"))])
         header_table.append(["BILL",context["inum"],"","","",""])
         df["Case"] = (df["FC"].apply(lambda x: int(x) if x else 0) + df["LC"].apply(lambda x: int(x) if x else 0)).astype(str).replace("0","")
         dfs = df[["No","Product Name","MRP","Case","Units","UPC","Gross Value"]]
