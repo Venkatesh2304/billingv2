@@ -123,6 +123,7 @@ def vehicle_selection(request) :
     return render(request, 'vehicle_selection.html', {'form': form})
 
 def get_bill_data(request):
+    print( request.method ,   request.POST )
     if request.method == 'POST':
         data = request.POST.get('data')
         data = json.loads(data)

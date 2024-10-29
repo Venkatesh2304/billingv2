@@ -125,12 +125,12 @@
                 vehicle: "{{ selected_vehicle }}",
                 type: "{{ type }}"
             };
+            const formData = new FormData();
+            formData.append('data', JSON.stringify(data));
         
             if (audioBlob) {
                 // Create FormData to include audio if present
-                const formData = new FormData();
                 formData.append('audio', audioBlob, 'failure_note.ogg');
-                formData.append('data', JSON.stringify(data));
         
                 fetch(`/get_bill_data/`, {
                     method: 'POST',
@@ -141,14 +141,12 @@
                 .then(data => handleResponse(data))
                 .catch(error => handleError(error));
             } else {
+                alert(23);
                 // No audioBlob, proceed with JSON payload only
                 fetch(`/get_bill_data/`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': '{{ csrf_token }}'
-                    },
-                    body: JSON.stringify(data)
+                    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                    body: formData
                 })
                 .then(response => response.json())
                 .then(data => handleResponse(data))
