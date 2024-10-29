@@ -141,7 +141,6 @@
                 .then(data => handleResponse(data))
                 .catch(error => handleError(error));
             } else {
-                alert(23);
                 // No audioBlob, proceed with JSON payload only
                 fetch(`/get_bill_data/`, {
                     method: 'POST',
