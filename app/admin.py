@@ -819,7 +819,7 @@ class PrintAdmin(CustomAdminModel) :
     actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet","only_einvoice"]
     custom_views = [("retail","changelist_view"),("wholesale","changelist_view"),("print_party_autocomplete",PartyAutocomplete.as_view())]
     list_per_page = 250
-    readonly_fields = ["bill","print_type","print_time"] 
+    readonly_fields = ["bill"] #,"print_type","print_time" 
     title = "All Bills"
 
     PRINT_ACTION_CONFIG = {
@@ -901,8 +901,7 @@ class PrintAdmin(CustomAdminModel) :
                                             {"Yes" : lambda qs : qs.filter(bill__delivered = True) ,
                                              "No" : lambda qs : qs.filter(bill__delivered = False) }),
         ]
-    
-   
+     
     def date(self,obj):
         return obj.bill.date
     
