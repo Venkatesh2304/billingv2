@@ -64,6 +64,7 @@ import os
 from requests.exceptions import JSONDecodeError
 from django.http import JsonResponse
 
+
 class PrintType(Enum):
     FIRST_COPY = "first_copy"
     DOUBLE_FIRST_COPY = "double_first_copy"
@@ -1097,7 +1098,7 @@ class BillDeliveryAdmin(CustomAdminModel) :
                        "WHOLESALE" : lambda qs : qs.filter(bill__beat__contains = "WHOLESALE") ,
                        })]
     ordering = ("bill_id",)
-    search_fields = ("bill_id","vehicle_id")
+    # search_fields = ("bill_id","vehicle_id")
     
     def party(self,obj) : 
         return obj.bill.party.name
