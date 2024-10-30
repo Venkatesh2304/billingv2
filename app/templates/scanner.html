@@ -46,6 +46,13 @@
 
     <video id="scanner" width="100%" height="auto"></video>
     <h2 id="result">Scan</h2>
+
+    <!-- Manual input for cases when Aztec code is not detected -->
+    <div style="margin-top: 20px;">
+        <input type="text" id="manual-code" placeholder="Enter Bill Number" />
+        <button onclick="submitManualCode()">Submit</button>
+    </div>
+
     <audio id="audio-playback" controls style="display: none;"></audio>
 
     <!-- Voice recording section, shown only for failed deliveries -->
@@ -60,38 +67,38 @@
         const codeReader = new ZXing.BrowserMultiFormatReader();
         let scanning = true;
         let recorder, audioBlob, scannedBarcode;
-        
+
         function startScanning(selectedDeviceId) {
             codeReader.decodeFromVideoDevice(selectedDeviceId, 'scanner', (result, err) => {
                 if (result && scanning) {
                     scanning = false;  // Stop scanning once a barcode is detected
                     scannedBarcode = result.text;
                     document.getElementById('result').innerText = 'Scanning: ' + scannedBarcode;
-        
+
                     // Stop scanning
                     codeReader.reset();
-        
+
                     {% if type == "delivery_failed" %}
                         // Show recording section and start recording process
                         document.getElementById('record-section').style.display = 'block';
                         setupRecording();
                     {% else %}
                         // Directly send POST request if no recording is required
-                        sendPostRequest();
+                        sendPostRequest(scannedBarcode);
                     {% endif %}
                 }
-        
+
                 if (err && scanning) {
                     console.error(err);
                 }
             });
         }
-        
+
         function setupRecording() {
             const recordBtn = document.getElementById('record-btn');
             const stopBtn = document.getElementById('stop-btn');
             const audioPlayback = document.getElementById('audio-playback');
-        
+
             recordBtn.addEventListener('click', async () => {
                 if (!navigator.mediaDevices) return alert('Audio recording is not supported in this browser.');
                 
@@ -104,7 +111,7 @@
                     audioBlob = new Blob(chunks, { type: 'audio/ogg; codecs=opus' });
                     audioPlayback.src = URL.createObjectURL(audioBlob);
                     audioPlayback.style.display = 'block';
-                    sendPostRequest();  // Send POST request after recording is complete
+                    sendPostRequest(scannedBarcode);  // Send POST request after recording is complete
                 };
         
                 recorder.start();
@@ -118,44 +125,34 @@
                 stopBtn.style.display = 'none';
             });
         }
-        
-        function sendPostRequest() {
+
+        // Function to send POST request with the scanned or manually entered code
+        function sendPostRequest(code) {
             const data = {
-                inum: scannedBarcode,
+                inum: code,
                 vehicle: "{{ selected_vehicle }}",
                 type: "{{ type }}"
             };
             const formData = new FormData();
             formData.append('data', JSON.stringify(data));
-        
+
             if (audioBlob) {
-                // Create FormData to include audio if present
                 formData.append('audio', audioBlob, 'failure_note.ogg');
-        
-                fetch(`/get_bill_data/`, {
-                    method: 'POST',
-                    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => handleResponse(data))
-                .catch(error => handleError(error));
-            } else {
-                // No audioBlob, proceed with JSON payload only
-                fetch(`/get_bill_data/`, {
-                    method: 'POST',
-                    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => handleResponse(data))
-                .catch(error => handleError(error));
             }
+
+            fetch(`/get_bill_data/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => handleResponse(data))
+            .catch(error => handleError(error));
         }
-        
+
         function handleResponse(data) {
             const notificationSound = document.getElementById('notification-sound');
-            const audioPlayback = document.getElementById('audio-playback'); // Get the audio playback element
+            const audioPlayback = document.getElementById('audio-playback');
             
             if (data.data) {
                 notificationSound.play();
@@ -163,28 +160,34 @@
                 
                 setTimeout(() => {
                     document.getElementById('result').innerText = 'Scan';
-                    document.getElementById('record-section').style.display = 'none';  // Hide recording section
-                    audioPlayback.style.display = 'none';  // Hide audio playback
-                    audioPlayback.src = ''; // Clear the source to reset the player
-                    scanning = true;  // Enable scanning again
-                    startScanning();  // Restart scanning
-                }, 2000); // Allow a brief delay for notification to play
+                    document.getElementById('record-section').style.display = 'none';
+                    audioPlayback.style.display = 'none';
+                    audioPlayback.src = '';
+                    scanning = true;
+                    startScanning();
+                }, 2000);
             } else {
                 document.getElementById('result').innerText = 'Bill not found';
-                document.getElementById('record-section').style.display = 'none';  // Hide recording section
-                audioPlayback.style.display = 'none';  // Hide audio playback
-                audioPlayback.src = ''; // Clear the source to reset the player
-                scanning = true;  // Enable scanning again
-                startScanning();  // Restart scanning
+                scanning = true;
+                startScanning();
             }
         }
-        
+
         function handleError(error) {
             console.error('Error fetching bill:', error);
             scanning = true;
         }
-        
-        // Initialize the scanner and set the selected camera
+
+        // Manual code submission handler
+        function submitManualCode() {
+            const manualCode = document.getElementById('manual-code').value;
+            if (manualCode) {
+                sendPostRequest(manualCode);
+            } else {
+                alert("Please enter a code to submit.");
+            }
+        }
+
         codeReader.listVideoInputDevices()
             .then(videoInputDevices => {
                 const backCamera = videoInputDevices.find(device => device.label.toLowerCase().includes('back'));
@@ -192,6 +195,6 @@
                 startScanning(selectedDeviceId);
             })
             .catch(err => console.error(err));
-            </script>
+    </script>
 </body>
 </html>
