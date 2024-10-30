@@ -2,6 +2,7 @@
 import datetime
 from io import BytesIO
 import json
+import os
 import time
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
@@ -159,7 +160,10 @@ def get_bill_data(request):
 
     return redirect("vehicle_selection")
 
+def update(request) : 
+    os.system("git stash && git pull --ff && pip install -r requirements.txt && python manage.py migrate")
 
+    
 ##depricated
 class ManualPrintForm(forms.Form):
     from_bill = forms.CharField(label='From Bill', max_length=100)

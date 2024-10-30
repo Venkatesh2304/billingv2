@@ -1097,6 +1097,7 @@ class BillDeliveryAdmin(CustomAdminModel) :
                        "WHOLESALE" : lambda qs : qs.filter(bill__beat__contains = "WHOLESALE") ,
                        })]
     ordering = ("bill_id",)
+    search_fields = ("bill_id","vehicle_id")
     
     def party(self,obj) : 
         return obj.bill.party.name
@@ -1111,7 +1112,8 @@ class BillDeliveryAdmin(CustomAdminModel) :
             queryset = response.context_data['cl'].queryset
             loading_sheets = queryset.filter(loading_sheet__isnull=False).values('loading_sheet').distinct().count()
             single_bills = queryset.filter(loading_sheet__isnull=True).distinct().count()
-            response.context_data['cl'].result_count = f"SINGLE: {single_bills}, LS: {loading_sheets} = {single_bills+loading_sheets}" 
+            response.context_data['cl'].result_count = single_bills+loading_sheets
+            #f"SINGLE: {single_bills}, LS: {loading_sheets} = {single_bills+loading_sheets}" 
         except (AttributeError, KeyError):
             pass
         return response
@@ -1546,6 +1548,7 @@ class MyAdminSite(admin.AdminSite):
             "Config": {
                 "Vehicle": reverse("admin:app_vehicle_changelist"),
             },
+            "Update": reverse("update") ,
         }
         context['navbar_data'] = navbar_data
         return context
