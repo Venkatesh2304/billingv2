@@ -1107,7 +1107,7 @@ class BillDeliveryAdmin(CustomAdminModel) :
             queryset = response.context_data['cl'].queryset
             loading_sheets = queryset.filter(loading_sheet__isnull=False).values('loading_sheet').distinct().count()
             single_bills = queryset.filter(loading_sheet__isnull=True).distinct().count()
-            response.context_data['cl'].result_count = f"SINGLE: {single_bills}, LS: {loading_sheets} = {single_bills+loading_sheet}" 
+            response.context_data['cl'].result_count = f"SINGLE: {single_bills}, LS: {loading_sheets} = {single_bills+loading_sheets}" 
         except (AttributeError, KeyError):
             pass
         return response
