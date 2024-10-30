@@ -128,6 +128,7 @@ def get_bill_data(request):
         data = request.POST.get('data')
         data = json.loads(data)
         inum = data.get("inum")
+        if len(inum) == 5 : inum = "A" + inum 
         vehicle = data.get("vehicle")
         bill_type = data.get("type")
         failure_reason = request.FILES.get("audio")

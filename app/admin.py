@@ -220,7 +220,7 @@ def run_billing_process(billing_log: models.Billing,billing_form : forms.Form) :
     creditrelease = creditrelease.to_dict(orient="records")
 
     def filter_orders_fn(order: pd.Series) : 
-        return ((today == order_date) and all([
+        return (((today == order_date) or (order.iloc[0].ot == "SH")) and all([
               order.on.count() <= max_lines ,
               (order.on.iloc[0] not in today_bill_values) or abs((order.t * order.cq).sum() - today_bill_values[order.on.iloc[0]]) <= 1 , 
               "WHOLE" not in order.m.iloc[0] ,
