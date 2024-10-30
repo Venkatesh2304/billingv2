@@ -8,6 +8,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 import pandas as pd
 
+from app.admin import sync_reports
 from app.common import query_db
 from custom.classes import Billing
 from .models import Outstanding
@@ -164,6 +165,9 @@ def update(request) :
     os.system("git stash && git pull --ff && pip install -r requirements.txt && python manage.py migrate")
     return JsonResponse("Done")
 
+def force_sales_sync(request) :
+    sync_reports(limits={"sales":datetime.date()} , 
+                                min_days_to_sync={"collection":15})
     
 ##depricated
 class ManualPrintForm(forms.Form):
