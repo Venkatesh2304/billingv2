@@ -162,6 +162,7 @@ def get_bill_data(request):
 
 def update(request) : 
     os.system("git stash && git pull --ff && pip install -r requirements.txt && python manage.py migrate")
+    return JsonResponse("Done")
 
     
 ##depricated
