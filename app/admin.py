@@ -1098,7 +1098,7 @@ class BillDeliveryAdmin(CustomAdminModel) :
                        "WHOLESALE" : lambda qs : qs.filter(bill__beat__contains = "WHOLESALE") ,
                        })]
     ordering = ("bill_id",)
-    # search_fields = ("bill_id","vehicle_id")
+    search_fields = ("bill_id","vehicle_id")
     
     def party(self,obj) : 
         return obj.bill.party.name
