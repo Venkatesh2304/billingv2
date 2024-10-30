@@ -817,7 +817,7 @@ class PrintAdmin(CustomAdminModel) :
     change_list_template = "form_and_changelist.html"
     list_display = ["bill","party","salesman","print_type","print_time",delivered,"einvoice","amount","vehicle"]#,"einvoice","ctin"]
     ordering = ["bill"]
-    actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet","only_einvoice"]
+    actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet","printed_by_mistake"]
     custom_views = [("retail","changelist_view"),("wholesale","changelist_view"),("print_party_autocomplete",PartyAutocomplete.as_view())]
     list_per_page = 250
     readonly_fields = ["bill"] #,"print_type","print_time" 
@@ -1039,6 +1039,10 @@ class PrintAdmin(CustomAdminModel) :
         img_base64 = base64.b64encode(captcha_img).decode('utf-8')
         return render_confirmation_page("einvoice_login.html",request,queryset,{'image_data': img_base64})
 
+    @admin.action(description="Reload Bill")
+    def printed_by_mistake(self, request, queryset):
+        return queryset.update(print_time = None)
+
     @admin.action(description="Both Copy")
     def both_copy(self, request, queryset):
         return self.base_print_action(request, queryset, [PrintType.SECOND_COPY,PrintType.FIRST_COPY])
@@ -1098,7 +1102,7 @@ class BillDeliveryAdmin(CustomAdminModel) :
                        "WHOLESALE" : lambda qs : qs.filter(bill__beat__contains = "WHOLESALE") ,
                        })]
     ordering = ("bill_id",)
-    search_fields = ("bill_id","vehicle_id")
+    search_fields = ("bill","vehicle_id")
     
     def party(self,obj) : 
         return obj.bill.party.name
