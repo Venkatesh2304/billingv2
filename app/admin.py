@@ -1090,11 +1090,27 @@ class WholeSalePrintAdmin(PrintAdmin) :
         return super().get_queryset(request).filter(bill__beat__contains = "WHOLESALE")
 
 class BillDeliveryAdmin(CustomAdminModel) : 
-    list_display = ["bill_id","party","vehicle_id","loading_time","delivered","delivered_time"]
-    list_filter = ["vehicle_id","delivered"]
+    list_display = ["bill_id","party","vehicle_id","loading_time","delivered","delivered_time","is_loading_sheet"]
+    list_filter = ["vehicle_id","delivered","loading_time","delivered_time"]
     
+
     def party(self,obj) : 
         return obj.bill.party.name
+
+    @admin.display(boolean=True,description="LS")
+    def is_loading_sheet(self,obj) : 
+        return not (obj.loading_sheet is None)
+    
+    def changelist_view(self, request, extra_context=None):
+        response = super().changelist_view(request, extra_context=extra_context)
+        try:
+            queryset = response.context_data['cl'].queryset
+            loading_sheets = queryset.filter(loading_sheet__isnull=False).values('loading_sheet').distinct().count()
+            single_bills = queryset.filter(loading_sheet__isnull=True).distinct().count()
+            response.context_data['cl'].result_count = loading_sheets + single_bills
+        except (AttributeError, KeyError):
+            pass
+        return response
     
     
 
