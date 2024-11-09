@@ -19,7 +19,7 @@ def sync_beat_parties_ikea(force = False) :
 
     today = datetime.date.today() if not force else (datetime.date.today() + datetime.timedelta(days=1))
     newly_synced = sync_reports(limits={"sales":today,"adjustment":today,"collection" : today,"beat": today,"party" : today,"beat" : today} , 
-                                min_days_to_sync={"collection":15})
+                                min_days_to_sync={"collection":60})
     if newly_synced : 
         models.Outstanding.upload_today_outstanding_mongo()
            
@@ -34,8 +34,8 @@ class AdminProcessingMiddleware(MiddlewareMixin):
             return JsonResponse({"Sales Synced for last 300 days"})
         
         if "force-collection-sync" in request.path : 
-            sync_reports(limits={ "collection" : None },min_days_to_sync={"collection" : 300})
-            return JsonResponse({"Collection Synced for last 300 days"})
+            sync_reports(limits={ "collection" : None },min_days_to_sync={"collection" : 60})
+            return JsonResponse({"Collection Synced for last 60 days"})
         
         global verified_today_sync
         if verified_today_sync : return
