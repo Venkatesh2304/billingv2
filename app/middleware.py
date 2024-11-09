@@ -2,6 +2,7 @@
 
 import datetime
 from django.contrib.admin.views.main import ChangeList
+from django.http import JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 import pandas as pd
 from app.admin import sync_reports
@@ -27,6 +28,15 @@ class AdminProcessingMiddleware(MiddlewareMixin):
         if "force-sync" in request.path : 
             sync_beat_parties_ikea(force=True)
             return 
+        
+        if "force-sales-sync" in request.path : 
+            sync_reports(limits={ "sales" : None },min_days_to_sync={"sales" : 300})
+            return JsonResponse({"Sales Synced for last 300 days"})
+        
+        if "force-collection-sync" in request.path : 
+            sync_reports(limits={ "collection" : None },min_days_to_sync={"collection" : 300})
+            return JsonResponse({"Collection Synced for last 300 days"})
+        
         global verified_today_sync
         if verified_today_sync : return
         urls = ["outstanding","orders","bank"]

@@ -149,8 +149,8 @@ def check_last_sync(type,limit) :
 
 def sync_reports(billing = None,limits = {},min_days_to_sync = {}) -> bool :
     min_days_to_sync = defaultdict(lambda : 2 , min_days_to_sync )
-    get_sync_from_date_for_model = lambda model_class : min( model_class.objects.aggregate(date = Max("date"))["date"] or START_DATE ,
-                                                    datetime.date.today() - datetime.timedelta(days=min_days_to_sync[model_class.__name__]) )
+    get_sync_from_date_for_model = lambda model_class : max(min( model_class.objects.aggregate(date = Max("date"))["date"] or START_DATE ,
+                                                    datetime.date.today() - datetime.timedelta(days=min_days_to_sync[model_class.__name__.lower()]) ), START_DATE)
     
     DeleteType = Enum("DeleteType","datewise all none")
     FunctionTuple = namedtuple("function_tuple",["download_function","model","insert_function","has_date_arg","delete_type"])
@@ -1553,6 +1553,10 @@ class MyAdminSite(admin.AdminSite):
                 "Vehicle": reverse("admin:app_vehicle_changelist"),
             },
             "Update": reverse("update") ,
+            "Sync": {
+                "Sales":"/force-sales-sync" ,
+                "Collection":"/force-collection-sync" ,
+            }
         }
         context['navbar_data'] = navbar_data
         return context
