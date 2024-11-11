@@ -127,7 +127,7 @@ def CollectionInsert(coll) :
    coll = coll.rename(columns=coll_map)
    coll = coll.dropna(subset="inum")
    coll["date"] = pd.to_datetime(coll.date,dayfirst=True).dt.date
-   coll = coll[coll.Status != "CAN"]
+   coll = coll[coll.Status != "CAN"]    
    coll["mode"] = coll.Status.replace({"CSH":"Cash"} | { k : "Bank" for k in ["CHQ","NEFT","RTGS","UPI","IMPS"] })
    coll["party_id"] = None
    ledger_insert("collection",coll[ models.Collection.columns ])
