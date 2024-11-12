@@ -29,12 +29,12 @@ class AdminProcessingMiddleware(MiddlewareMixin):
             return 
         
         if "force-sales-sync" in request.path : 
-            sync_reports(limits={ "sales" : None },min_days_to_sync={"sales" : 300})
+            sync_reports(limits={ "sales" : None },min_days_to_sync={"sales" : 90})
             return JsonResponse({"Sales Synced for last 300 days"})
         
         if "force-collection-sync" in request.path : 
             sync_reports(limits={ "collection" : None },min_days_to_sync={"collection" : 30})
-            return JsonResponse({"Collection Synced for last 60 days"})
+            return JsonResponse({"Collection Synced for last 30 days"})
         
         global verified_today_sync
         if verified_today_sync : return
