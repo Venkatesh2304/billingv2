@@ -138,7 +138,7 @@ class IkeaDownloader(BaseIkea) :
           return pd.read_csv( self.get_buffer(durl))
 
       def collection(self,fromd,tod) : 
-          df = self.report( "ikea/collection" , r'(":val10":").{10}(",":val11":").{10}(",":val12":"2018/04/01",":val13":").{10}', 
+          df = self.report( "ikea/collection" , r'(":val10":").{10}(",":val11":").{10}(",":val12":".{10}",":val13":").{10}', 
                        ( fromd.strftime("%Y/%m/%d")  , tod.strftime("%Y/%m/%d") , tod.strftime("%Y/%m/%d") ) )
           return df 
       
