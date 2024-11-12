@@ -24,6 +24,7 @@ def sales_insert(sales_reg,sales_gst,sales_type,permanent) :
     bulk_raw_insert("bill",print_table,ignore=True)
     if permanent : bulk_raw_insert("discount",disc)
 
+
 # delete_sales('sales')
 # delete_sales('salesreturn')
 # delete_sales('claimservice')

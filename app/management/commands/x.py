@@ -34,13 +34,16 @@ from app.models import Orders,OrderProducts
 print( pd.read_sql(f"select * from app_sales where inum = 'A50207' ",connection)  )
 print( pd.read_sql(f"select * from app_collection where bill_id = 'A50207' ",connection)  )
 print( pd.read_sql(f"select * from app_adjustment where to_bill_id = 'A50207' ",connection)  )
-print( pd.read_sql(f"select * from app_collection where date = '2024-11-05' ",connection)  )
-pd.read_sql(f"select * from app_collection",connection).to_excel("b.xlsx")
+print( pd.read_sql(f"select * from app_collection where date = '2024-11-02' ",connection)  )
+print( pd.read_sql(f"select * from app_sales where date = '2024-11-12'",connection)  )
+print( pd.read_sql(f"select * from app_sales where inum = 'A55428'",connection)  )
+
+# pd.read_sql(f"select * from app_collection",connection).to_excel("b.xlsx")
 sdf
 print( Orders.objects.filter(beat__isnull = True).all() )
 print( Outstanding.objects.filter(inum = "A34406").first().party.name )
 print( pd.read_sql(f"select * from app_bill",connection)  )
-print( pd.read_sql(f"select * from app_bill",connection)  )
+print( pd.read_sql(f"select * from app_sa",connection)  )
 
 
 cur = connection.cursor()
