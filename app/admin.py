@@ -131,12 +131,11 @@ def create_simple_admin_list_filter(title_name,paramter,lookups: dict[str,Callab
     return CustomListFilter   
 
 
-START_DATE = datetime.date(2024,4,1)
+START_DATE = datetime.date(2024,11,1)
 
 def check_last_sync(type,limit) :
     if limit is None : return False 
     last_synced = models.Sync.objects.filter( process = type.capitalize() ).first()
-    print( type , last_synced.time )
     if last_synced : 
         if isinstance(limit,int) :  
             if (datetime.datetime.now() - last_synced.time).seconds <= limit : return True
