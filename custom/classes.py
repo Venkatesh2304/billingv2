@@ -416,7 +416,7 @@ class Billing(IkeaDownloader) :
         get_shikhar = get_curl("ikea/billing/getshikhar")
         get_shikhar.json["importDate"] =  self.today.strftime("%d/%m/%Y")
         shikhar_data = get_shikhar.send(self).json()["shikharOrderList"]
-        shikhar_ids = [order[11] for order in shikhar_data[1:] if order[9] == self.order_date.strftime("%d/%m/%Y")]
+        shikhar_ids = [order[11] for order in shikhar_data[1:]] #no date condition on shikar if order[9] == self.order_date.strftime("%d/%m/%Y")]
     
         get_order_req = get_curl("ikea/billing/getmarketorder")
         get_order_req.json |= (self.import_dates | {"qtmShikharList" : shikhar_ids})
@@ -850,6 +850,7 @@ class Einvoice(Session) :
           form["submit"] = "Date"
           form["irp"] = "NIC1"
           table_html = self.post("/MisRpt/MisRptAction",data=form).text
+          with open("a.html","w+") as f : f.write(table_html)
           tables = pd.read_html( table_html )
           irn_gen_by_me_excel_bytesio = self.get('/MisRpt/ExcelGenerratedIrnDetails?noofRec=1&Actn=GEN').content
           return irn_gen_by_me_excel_bytesio 

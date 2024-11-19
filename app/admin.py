@@ -17,6 +17,7 @@ import re
 import shutil
 from threading import Thread
 import threading
+import django
 from django.contrib.admin.views.main import ChangeList
 import time
 import traceback
@@ -63,6 +64,7 @@ from rangefilter.filters import NumericRangeFilter
 import os 
 from requests.exceptions import JSONDecodeError
 from django.http import JsonResponse
+from urllib.parse import quote, unquote
 
 
 class PrintType(Enum):
@@ -209,7 +211,7 @@ def run_billing_process(billing_log: models.Billing,billing_form : forms.Form) :
     max_lines = billing_form.cleaned_data["max_lines"]    
     order_date =  billing_log.date
 
-    today_bill_values = { order.order_no : order.bill_value() for order in models.Orders.objects.filter(date = order_date) } # type: ignore
+    prev_order_total_values = { order.order_no : order.bill_value() for order in models.Orders.objects.filter(date = order_date) } # type: ignore
     today_last_billing_qs = models.Billing.objects.filter(start_time__gte = today, date = order_date).order_by("-start_time")
     last_billing_orders = models.Orders.objects.filter(billing = today_last_billing_qs[1]) if today_last_billing_qs.count() > 1 else models.Orders.objects.none()
     delete_order_nos = [ order.order_no for order in last_billing_orders.filter(delete = True).all() ]
@@ -223,8 +225,8 @@ def run_billing_process(billing_log: models.Billing,billing_form : forms.Form) :
     def filter_orders_fn(order: pd.Series) : 
         return (((today == order_date) or (order.iloc[0].ot == "SH")) and all([
               order.on.count() <= max_lines ,
-              (order.on.iloc[0] not in today_bill_values) or abs((order.t * order.cq).sum() - today_bill_values[order.on.iloc[0]]) <= 1 , 
-              "WHOLE" not in order.m.iloc[0] ,
+              (order.on.iloc[0] not in prev_order_total_values) or abs((order.t * order.cq).sum() - prev_order_total_values[order.on.iloc[0]]) <= 1 , 
+              "WHOLE" not in order.m.iloc[0] ,+
               (order.t * order.cq).sum() >= 200
             ])) or (order.on.iloc[0] in forced_order_nos)
 
@@ -415,9 +417,14 @@ class BaseOrderAdmin(CustomAdminModel) :
     readonly_fields = ("order_no",'date','party','type','salesman','beat','billing','release','creditlock','delete','place_order','force_order')
 
     @bold 
+    def pending_value(self,obj) : 
+        return round(obj.bill_value() - obj.allocated_value(),2)
+    
+    @bold 
     def value(self,obj) : 
         return obj.bill_value()
     
+
     def OS(self,obj) :
         today = datetime.date.today() 
         bills = [  f"{-round(bill.balance)}*{(today - bill.date).days}"
@@ -599,6 +606,7 @@ class BillingAdmin(BaseOrderAdmin) :
     def get_queryset(self, request):
         qs = super().get_queryset(request)
         qs = qs.filter(creditlock=True) 
+        #2 hrs of yesterday 
         billing_qs = models.Billing.objects.filter(start_time__gte = datetime.datetime.now()  - datetime.timedelta(minutes=120)).order_by("-start_time")
         for billing in billing_qs:
             order_status = models.BillingProcessStatus.objects.filter(billing=billing, process="ORDER").first()
@@ -647,7 +655,7 @@ class BillingAdmin(BaseOrderAdmin) :
 class OrdersAdmin(BaseOrderAdmin) :
     
     list_display_links = ["order_no"]
-    list_display =  ["partial","order_no","party","lines","value","OS","coll","salesman","beat","creditlock","delete","phone"] 
+    list_display =  ["partial","order_no","party","lines","pending_value","OS","coll","salesman","beat","creditlock","delete","phone"] 
     ordering = ["place_order"]
     actions = ["force_order","delete_orders"]
     custom_views = [ ("pending_orders","pending_changelist_view"),
@@ -668,14 +676,19 @@ class OrdersAdmin(BaseOrderAdmin) :
     def get_queryset(self, request):
         qs = super().get_queryset(request)     
         view_name = request.resolver_match.view_name 
-        if view_name.endswith("pending_orders") : qs = qs.filter(place_order = True,creditlock=False) 
+        
+        if view_name.endswith("pending_orders") : 
+            qs = qs.filter(place_order = True,creditlock=False) 
+            qs = qs.exclude(products__allocated = F("products__quantity")).distinct()
+
         if view_name.endswith("rejected_orders") : qs = qs.filter(place_order = False)
+
         qs = qs.exclude(beat__name__contains = "WHOLE")
-        qs = qs.exclude(products__allocated = F("products__quantity")).distinct()
         return qs 
     
     def _changelist_view(self,title_prefix,request,extra_context) : 
-        title = f"{title_prefix} @ {(get_last_billing() or models.Billing()).start_time.strftime('%d %B %Y, %I:%M:%S %p')}"
+        last_billing = get_last_billing()
+        title = f"{title_prefix} @ {last_billing.start_time.strftime('%d %B %Y, %I:%M:%S %p')}" if last_billing else "No Recent Billing"
         return super().changelist_view(request, extra_context={ "title" : title })
     
     def changelist_view(self,request,extra_context = {}) : 
@@ -817,8 +830,9 @@ class PrintAdmin(CustomAdminModel) :
     change_list_template = "form_and_changelist.html"
     list_display = ["bill","party","salesman","print_type","print_time",delivered,"einvoice","amount","vehicle"]#,"einvoice","ctin"]
     ordering = ["bill"]
-    actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet","printed_by_mistake"]
-    custom_views = [("retail","changelist_view"),("wholesale","changelist_view"),("print_party_autocomplete",PartyAutocomplete.as_view())]
+    actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet","double_first_copy","printed_by_mistake"]
+    custom_views = [("print_party_autocomplete",PartyAutocomplete.as_view()),
+                    ("undo_print","undo_print")]
     list_per_page = 250
     readonly_fields = ["bill"] #,"print_type","print_time" 
     title = "All Bills"
@@ -998,26 +1012,35 @@ class PrintAdmin(CustomAdminModel) :
         for file_name in list(set(file_names)) : 
             renamed_file = f"{file_name.split('.')[0]}_{bills[0]}_{bills[-1]}.{file_name.split('.')[1]}"
             shutil.copyfile(file_name,f"bills/{renamed_file}")
+
+            undo_url = reverse("admin:undo_print") + f"?inums={','.join(bills)}" + f"&next={quote(str(request.get_full_path()))}"
             # Generate the download link
             link = hyperlink(f"/static/{renamed_file}",print_type.name.upper(),style="text-decoration:underline;color:blue;") 
+            
+            if not config["allow_printed"] :
+                undo_link = hyperlink(undo_url,"Printed By Mistake?",style="text-decoration:underline;color:blue;margin-left:5px;",new_tab=False) 
+            else : 
+                undo_link = ""
+
             if status:
-                messages.success(request, mark_safe(f"Successfully printed {link}: {bills[0]} - {bills[-1]}"))
+                messages.success(request, mark_safe(f"Successfully printed {link}: {bills[0]} - {bills[-1]} {undo_link}"))
             else:
-                messages.error(request, mark_safe(f"Bills failed to print {link}: {bills[0]} - {bills[-1]}"))
+                messages.error(request, mark_safe(f"Bills failed to print {link}: {bills[0]} - {bills[-1]} {undo_link}"))
                     
     def base_print_action(self, request, queryset, print_types):
         queryset = queryset.filter(bill__delivered = True)
-        einv_qs =  queryset.filter(bill__ctin__isnull=False, irn__isnull=True).none() #warning #.none to prevent einvoice
-        einv_count = einv_qs.count()
-        einvoice_service = Einvoice()
+        
+        einv_qs =  queryset.filter(bill__ctin__isnull=False, irn__isnull=True) #warning #.none to prevent einvoice
+        einvoice_enabled = models.Settings.objects.get(key = "einvoice").status 
+        einv_count = einv_qs.count() if einvoice_enabled else 0
+        einvoice_service = Einvoice() if einvoice_enabled  else None 
 
         if ('confirm_action' in request.POST) and ("captcha" in request.POST):
             captcha = request.POST["captcha"].upper()
             is_success , error = einvoice_service.login(captcha)
-            print(error)
             if error : messages.error(request,f"Einvoice Login Failed : {error}")
 
-        if (einv_count == 0) or einvoice_service.is_logged_in():
+        if einv_count or einvoice_service.is_logged_in():
             if einv_count:
                 self.handle_einvoice_upload(request,einv_qs)
 
@@ -1055,6 +1078,10 @@ class PrintAdmin(CustomAdminModel) :
     def second_copy(self, request, queryset):
         return self.base_print_action(request, queryset, [PrintType.SECOND_COPY])
 
+    @admin.action(description="Double First Copy")
+    def double_first_copy(self, request, queryset):
+        return self.base_print_action(request, queryset, [PrintType.DOUBLE_FIRST_COPY])
+
     @admin.action(description="Salesman Loading Sheet")
     def loading_sheet_salesman(self, request, queryset):
 
@@ -1078,6 +1105,27 @@ class PrintAdmin(CustomAdminModel) :
     def only_einvoice(self, request, queryset):
         return self.base_print_action(request, queryset, [])
     
+    def undo_print(self,request):
+        ids = request.GET.get('inums', '')  
+        id_list = ids.split(',')
+        redirect_url = unquote(request.GET.get('next', ''))
+
+        if "confirm" in request.GET : 
+            confirm_undo = bool(request.GET.get("confirm") == "true")
+            if confirm_undo : 
+                qs = models.Bill.objects.filter(bill_id__in=id_list)
+                loading_sheets = list(qs.values_list("loading_sheet",flat=True).distinct())
+                qs.update(print_time=None,loading_sheet=None)
+                print( loading_sheets )
+                models.SalesmanLoadingSheet.objects.filter(inum__in = loading_sheets).delete()
+            return redirect(redirect_url)
+        else :
+            response_text = f"Are you sure that you have printed by mistake for the bills from {id_list[0]} to {id_list[-1]}?"
+            confirm_link = f"{request.get_full_path()}&confirm=true"
+            cancel_link = f"{request.get_full_path()}&confirm=false"
+            return HttpResponse(f"<script>if(confirm('{response_text}')) {{ window.location.href='{confirm_link}'; }} else {{ window.location.href='{cancel_link}'; }}</script>")
+          
+        
 class RetailPrintAdmin(PrintAdmin) : 
     title = "Retail Bills"
     def get_queryset(self, request):
@@ -1093,6 +1141,7 @@ class WholeSalePrintAdmin(PrintAdmin) :
 
     def get_queryset(self, request):
         return super().get_queryset(request).filter(bill__beat__contains = "WHOLESALE")
+
 
 class BillDeliveryAdmin(CustomAdminModel) : 
     list_display = ["bill_id","party","vehicle_id","loading_time","delivered","delivered_time","is_loading_sheet"]
@@ -1505,6 +1554,11 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
         return super().changelist_view(request, extra_context | {"form" : form,"title":"",
                                                                  "form_style":"margin-bottom:50px;border:2px solid"})
     
+class SettingsAdmin(CustomAdminModel) :
+    permissions = [Permission.change,Permission.add]
+    list_display_links = ["key"]
+    list_display = ["key","status","value"]
+    list_editable = ["status","value"]
 
 class MyAdminSite(admin.AdminSite):
 
@@ -1581,5 +1635,6 @@ admin_site.register(models.BasepackProcessStatus,BasepackAdmin)
 admin_site.register(models.SalesmanPendingSheet,SalesmanPendingSheetAdmin)
 admin_site.register(models.Vehicle,None)
 admin_site.register(models.SalesmanLoadingSheet,None)
+admin_site.register(models.Settings,SettingsAdmin)
 
 # admin_site.register(models.Eway,EwayAdmin)

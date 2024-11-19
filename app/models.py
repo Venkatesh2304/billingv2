@@ -49,7 +49,7 @@ class Orders(models.Model) :
     ##Expressions 
 
     def bill_value(self) : 
-        return round( sum([ (p.quantity - p.allocated) * p.rate for p in self.products.all() ])   , 2 )
+        return round( sum([ p.quantity * p.rate for p in self.products.all() ])   , 2 )
 
     def allocated_value(self) : 
         return round( sum([ p.allocated * p.rate for p in self.products.all() ]) or 0  , 2 )
@@ -371,6 +371,12 @@ class SalesmanCollection(models.Model) :
                                                               {"inum_id" : bill["bill_no"] , "amt" :bill["amount"],  "chq_id" : chq_id})
     
 
+class Settings(models.Model):
+    key = models.CharField(primary_key=True,max_length=100)  # Define keys for settings, e.g., "notifications"
+    status = models.BooleanField(default=True)  
+    value = models.CharField(null=True,blank=True,max_length=30)  # Store all types of values as text
+
+    
 class Sync(models.Model):
     process = models.CharField(max_length=20,primary_key=True)
     time = models.DateTimeField()
