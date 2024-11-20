@@ -34,7 +34,7 @@ if __name__ == "__main__":
             else:
                 addr = self.addr
                 
-            url = f"{self.protocol}://{addr}:{server_port}/app/orders/"
+            url = f"{self.protocol}://127.0.0.1:{server_port}/app/orders/"
             webbrowser.open(url)
             now = datetime.now().strftime("%B %d, %Y - %X")
             version = self.get_version()
