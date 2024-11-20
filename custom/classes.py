@@ -851,7 +851,7 @@ class Einvoice(Session) :
           form["irp"] = "NIC1"
           table_html = self.post("/MisRpt/MisRptAction",data=form).text
           with open("a.html","w+") as f : f.write(table_html)
-          tables = pd.read_html( table_html )
+          tables = pd.read_html( table_html , flavor = "html5lib")
           irn_gen_by_me_excel_bytesio = self.get('/MisRpt/ExcelGenerratedIrnDetails?noofRec=1&Actn=GEN').content
           return irn_gen_by_me_excel_bytesio 
           
