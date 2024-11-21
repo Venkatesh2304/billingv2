@@ -1571,6 +1571,8 @@ class SettingsAdmin(CustomAdminModel) :
     list_display = ["key","status","value"]
     list_editable = ["status","value"]
 
+query_url = lambda view,params : f'{reverse(view)}?{urlencode(params)}'
+
 class MyAdminSite(admin.AdminSite):
 
     models_on_navbar = []
@@ -1596,7 +1598,6 @@ class MyAdminSite(admin.AdminSite):
 
     def each_context(self, request):
         context = super().each_context(request)
-        query_url = lambda view,params : f'{reverse(view)}?{urlencode(params)}'
         navbar_data = {
             "Billing": reverse("admin:app_orders_changelist") ,
             "Print": {
@@ -1630,7 +1631,8 @@ class TodayOut(CustomAdminModel) :
     list_display_links = [] 
     
     def name(obj) : 
-        return mark_safe(hyperlink(f"/app/billdelivery/?vehicle_id__name__exact={obj.name}",obj.name))
+        return mark_safe(hyperlink(
+            query_url("admin:app_bill_changelist" , { "vehicle_id__name__exact":obj.name,"loading_time__gte":str(datetime.date.today()) }), obj.name))
 
     list_display = [name,"bills","loading_sheet","total"]
     
@@ -1669,6 +1671,6 @@ admin_site.register(models.Vehicle,None)
 admin_site.register(models.SalesmanLoadingSheet,None)
 admin_site.register(models.Settings,SettingsAdmin)
 
-# admin_site.register(models.TodayBillOut,TodayOut)
+admin_site.register(models.TodayBillOut,TodayOut)
 
 # admin_site.register(models.Eway,EwayAdmin)
