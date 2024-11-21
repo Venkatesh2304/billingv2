@@ -233,7 +233,7 @@ class Bill(models.Model) :
     delivered_time = models.DateTimeField(null=True,blank=True)
     irn = models.TextField(null=True,blank=True)
     delivered = models.BooleanField(null=True,blank=True)
-    plain_loading_sheet = models.BooleanField(default=False)
+    plain_loading_sheet = models.BooleanField(db_default=False,default=False)
     
 
 class RetailPrint(Bill):

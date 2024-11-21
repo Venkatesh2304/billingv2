@@ -1628,22 +1628,22 @@ class MyAdminSite(admin.AdminSite):
         return context
 
 class TodayOut(CustomAdminModel) :
-    change_list_template = "form_and_changelist.html"
 
+    change_list_template = "form_and_changelist.html"
     list_display_links = [] 
-    
     list_display = ["vehicle","bills","loading_sheet","total"]
-    
+    field = "loading_time"
+    title = "Bill Out From Godown"
 
     def vehicle(self,obj) : 
         today = datetime.datetime.combine(self.date , datetime.datetime.min.time())
         tommorow = datetime.datetime.combine(self.date + datetime.timedelta(days=1), datetime.datetime.min.time())
         return mark_safe(hyperlink(
-            query_url("admin:app_billdelivery_changelist" , { "vehicle_id__name__exact":obj.name,"loading_time__gte": str(today),
-                                                             "loading_time__lt": str(tommorow) }), obj.name))
+            query_url("admin:app_billdelivery_changelist" , { "vehicle_id__name__exact":obj.name,f"{self.field}__gte": str(today),
+                                                             f"{self.field}__lt": str(tommorow) }), obj.name))
 
     def get_bills_queryset(self,vehicle) : 
-        return models.Bill.objects.filter(loading_time__date = self.date,vehicle = vehicle)
+        return models.Bill.objects.filter(**{ f"{self.field}__date" : self.date,"vehicle" : vehicle })
     
     def bills(self,obj) : 
         return self.get_bills_queryset(obj).filter(loading_sheet__isnull=True).count()
@@ -1662,7 +1662,7 @@ class TodayOut(CustomAdminModel) :
         self.date = datetime.date.today() 
         form = DateForm(request.POST)
         if form.is_valid() :  self.date = form.cleaned_data["date"]
-        return super().changelist_view(request, (extra_context or {})| {"title" : "Bill Out From Godown", "form" : DateForm(initial = {"date":self.date}) })
+        return super().changelist_view(request, (extra_context or {})| {"title" : self.title, "form" : DateForm(initial = {"date":self.date}) })
     
 
 admin_site = MyAdminSite(name='myadmin')
