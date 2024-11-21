@@ -1613,7 +1613,8 @@ class MyAdminSite(admin.AdminSite):
             "Others": {
                 "Beat Export": reverse("admin:app_basepackprocessstatus_changelist"),
                 "Scan": reverse("scan_bills"),
-                "Bill Delivery": reverse("admin:app_billdelivery_changelist"),
+                "Bill Out": reverse("admin:app_todaybillout_changelist"),
+                "Bill In": reverse("admin:app_todaybillin_changelist"),
             },
             "Config": {
                 "Vehicle": reverse("admin:app_vehicle_changelist"),
