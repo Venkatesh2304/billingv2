@@ -1628,6 +1628,8 @@ class MyAdminSite(admin.AdminSite):
         return context
 
 class TodayOut(CustomAdminModel) :
+    change_list_template = "form_and_changelist.html"
+
     list_display_links = [] 
     
     def name(obj) : 
@@ -1637,27 +1639,31 @@ class TodayOut(CustomAdminModel) :
             query_url("admin:app_billdelivery_changelist" , { "vehicle_id__name__exact":obj.name,"loading_time__gte": str(today),
                                                              "loading_time__lt": str(tommorow) }), obj.name))
 
-    list_display = [name,"bills","loading_sheet","total","beats"]
+    list_display = [name,"bills","loading_sheet","total"]
     
-    def get_bills_queryset(self,vehicle,date) : 
-        return models.Bill.objects.filter(loading_time__date = date,vehicle = vehicle)
-    
-    def beats(self,obj) : 
-        return ",".join( set(self.get_bills_queryset(obj , datetime.date.today()).select_related("bill__beat").values_list("bill__beat",flat=True)) )
+    def get_bills_queryset(self,vehicle) : 
+        return models.Bill.objects.filter(loading_time__date = self.date,vehicle = vehicle)
     
     def bills(self,obj) : 
-        return self.get_bills_queryset(obj , datetime.date.today()).filter(loading_sheet__isnull=True).count()
+        return self.get_bills_queryset(obj).filter(loading_sheet__isnull=True).count()
     
     def loading_sheet(self,obj) : 
-        return self.get_bills_queryset(obj , datetime.date.today()).filter(loading_sheet__isnull=False).values_list(
+        return self.get_bills_queryset(obj).filter(loading_sheet__isnull=False).values_list(
                                                     "loading_sheet",flat=True).distinct().count()
     
     def total(self,obj) : 
         return self.bills(obj) + self.loading_sheet(obj)
     
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs 
+    def changelist_view(self, request, extra_context=None):    
+        class DateForm(forms.Form) :
+            date = forms.DateField(required=False,initial=datetime.date.today(),
+                                   widget=forms.DateInput(attrs={'type' : 'date'}))
+            Submit = submit_button("Submit")
+        self.date = datetime.date.today() 
+        form = DateForm(request.POST)
+        if form.is_valid() :  self.date = form.cleaned_data["date"]
+        return super().changelist_view(request, (extra_context or {})| {"title" : "Bill Out From Godown", "form" : DateForm() })
+    
 
 admin_site = MyAdminSite(name='myadmin')
 admin_site.has_permission = lambda r: setattr(r, 'user', AccessUser()) or True # type: ignore
