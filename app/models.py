@@ -233,6 +233,7 @@ class Bill(models.Model) :
     delivered_time = models.DateTimeField(null=True,blank=True)
     irn = models.TextField(null=True,blank=True)
     delivered = models.BooleanField(null=True,blank=True)
+    # plain_loading_sheet = models.BooleanField(null=True,blan)
 
 class RetailPrint(Bill):
     class Meta:
@@ -370,7 +371,6 @@ class SalesmanCollection(models.Model) :
                 SalesmanCollectionBill.objects.get_or_create(id = str(bill["_id"]) , defaults = 
                                                               {"inum_id" : bill["bill_no"] , "amt" :bill["amount"],  "chq_id" : chq_id})
     
-
 class Settings(models.Model):
     key = models.CharField(primary_key=True,max_length=100)  # Define keys for settings, e.g., "notifications"
     status = models.BooleanField(default=True)  

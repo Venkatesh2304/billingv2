@@ -980,7 +980,7 @@ class PrintAdmin(CustomAdminModel) :
         # Process the successful e-invoices
         einvoice_df = pd.read_excel(today_einvs_bytesio)
         for _,row in einvoice_df.iterrows() : 
-            models.Bill.objects.filter(bill_id = row["Doc No"]).update(irn = "IRN")
+            models.Bill.objects.filter(bill_id = row["Doc No"].strip()).update(irn = row["IRN"].strip())
                 
         # Remove successfully processed invoices from the failed list
         processed_bills = einvoice_df["Doc No"].values
@@ -1141,7 +1141,6 @@ class WholeSalePrintAdmin(PrintAdmin) :
     def get_queryset(self, request):
         return super().get_queryset(request).filter(bill__beat__contains = "WHOLESALE")
 
-
 class BillDeliveryAdmin(CustomAdminModel) : 
     list_display = ["bill_id","party","vehicle_id","loading_time","delivered","delivered_time","is_loading_sheet"]
     list_filter = ["vehicle_id","loading_time","delivered_time",
@@ -1171,7 +1170,6 @@ class BillDeliveryAdmin(CustomAdminModel) :
             pass
         return response
     
-
 class BankAdmin(CustomAdminModel) : 
 
     class BankCollectionInline(admin.TabularInline) : 

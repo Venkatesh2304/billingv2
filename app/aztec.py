@@ -25,12 +25,12 @@ def extract_invoice_number_first_copy(page):
 
 def extract_invoice_number_salesman_loading_sheet(page):
     """Extract the invoice number from the page."""
-    text_clip = (0, 0, 600, 120)
+    text_clip = (0, 0, 600, 180)
     page_text = page.get_text("text", clip=text_clip)
     if "Page 1\n" in page_text:
-        match = re.findall(r"BILL\n.*\n", page_text)
+        match = re.findall(r"BILL\n(.*)\n", page_text)
         if match:
-            return match[0][-6:]  # Return the last 6 characters as the invoice number
+            return match[0].strip() # Return the last 6 characters as the invoice number
     return None
 
 BarcodeConfig = namedtuple("barcode_config","x y extract_invoice_fn")
