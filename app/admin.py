@@ -1637,14 +1637,20 @@ class TodayOut(CustomAdminModel) :
             query_url("admin:app_billdelivery_changelist" , { "vehicle_id__name__exact":obj.name,"loading_time__gte": str(today),
                                                              "loading_time__lt": str(tommorow) }), obj.name))
 
-    list_display = [name,"bills","loading_sheet","total"]
+    list_display = [name,"bills","loading_sheet","total","beats"]
+    
+    def get_bills_queryset(self,vehicle,date) : 
+        return models.Bill.objects.filter(loading_time__date = date,vehicle = vehicle)
+    
+    def beats(self,obj) : 
+        print( list(self.get_bills_queryset(obj , datetime.date.today()).select_related("bill__beat").values_list("bill__beat",flat=True)) )
     
     def bills(self,obj) : 
-        return models.Bill.objects.filter(loading_time__date = datetime.date.today() ,vehicle = obj,loading_sheet__isnull=True).count()
+        return self.get_bills_queryset(obj , datetime.date.today()).filter(loading_sheet__isnull=True).count()
     
     def loading_sheet(self,obj) : 
-        return models.Bill.objects.filter(loading_time__date = datetime.date.today() , 
-                                          vehicle = obj,loading_sheet__isnull=False).values_list("loading_sheet",flat=True).distinct().count()
+        return self.get_bills_queryset(obj , datetime.date.today()).filter(loading_sheet__isnull=False).values_list(
+                                                    "loading_sheet",flat=True).distinct().count()
     
     def total(self,obj) : 
         return self.bills(obj) + self.loading_sheet(obj)
