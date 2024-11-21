@@ -233,7 +233,8 @@ class Bill(models.Model) :
     delivered_time = models.DateTimeField(null=True,blank=True)
     irn = models.TextField(null=True,blank=True)
     delivered = models.BooleanField(null=True,blank=True)
-    # plain_loading_sheet = models.BooleanField(null=True,blan)
+    plain_loading_sheet = models.BooleanField(default=False)
+    
 
 class RetailPrint(Bill):
     class Meta:
@@ -244,11 +245,13 @@ class WholeSalePrint(Bill):
     class Meta:
         proxy = True
         verbose_name = "WholeSale Print"
-  
+
+
 class BillDelivery(Bill):
     class Meta:
         proxy = True
         verbose_name = "Bill Delivery"
+        
 
 class Outstanding(models.Model) : 
       party = ForeignKey("app.Party",on_delete=models.CASCADE)
@@ -375,6 +378,11 @@ class Settings(models.Model):
     key = models.CharField(primary_key=True,max_length=100)  # Define keys for settings, e.g., "notifications"
     status = models.BooleanField(default=True)  
     value = models.CharField(null=True,blank=True,max_length=30)  # Store all types of values as text
+
+class TodayBillOut(Vehicle):
+    class Meta:
+        proxy = True
+        verbose_name = "Today Bill Out"
 
     
 class Sync(models.Model):

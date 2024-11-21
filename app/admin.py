@@ -830,7 +830,8 @@ class PrintAdmin(CustomAdminModel) :
     change_list_template = "form_and_changelist.html"
     list_display = ["bill","party","salesman","print_type","print_time","einvoice","amount",delivered,"vehicle"]#,"einvoice","ctin"]
     ordering = ["bill"]
-    actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet","double_first_copy","printed_by_mistake"]
+    actions = ["both_copy","loading_sheet_salesman","loading_sheet","first_copy","double_first_copy","second_copy","printed_by_mistake",
+               "add_to_loading_sheet","remove_from_loading_sheet"]
     custom_views = [("print_party_autocomplete",PartyAutocomplete.as_view()),
                     ("undo_print","undo_print")]
     list_per_page = 250
@@ -853,7 +854,8 @@ class PrintAdmin(CustomAdminModel) :
         },
         PrintType.LOADING_SHEET: {
             'create_bill': lambda billing, group, context: loading_sheet.create_pdf(billing.loading_sheet(group), 
-                                                                                    sheet_type=loading_sheet.LoadingSheetType.Plain),
+                                                                                    sheet_type=loading_sheet.LoadingSheetType.Plain) 
+                                                            or models.Bill.objects.filter(bill_id__in = group).update(plain_loading_sheet=True) ,
             'file_names': "loading.pdf", 
             'allow_printed'  : True , 
         },
@@ -904,7 +906,8 @@ class PrintAdmin(CustomAdminModel) :
                         for key,no_of_days in [("Today",0),("Yesterday",1),("Day Before Yesterday",2)] }
         return [
             create_simple_admin_list_filter("Printed ?", "printed", {
-                'Not Printed': lambda qs: qs.filter(print_time__isnull=True)
+                'Not Printed': lambda qs: qs.filter(print_time__isnull=True) , 
+                "Plain Loading Sheet" : lambda qs : qs.filter( Q(plain_loading_sheet=True) | Q(print_time__isnull=True) )
             }),
             # ("bill_id",create_admin_form_filter("Bill",BillRangeForm)),
             create_simple_admin_list_filter("Bill Date","bill__date",date_filter_fn),
@@ -1063,6 +1066,15 @@ class PrintAdmin(CustomAdminModel) :
         img_base64 = base64.b64encode(captcha_img).decode('utf-8')
         return render_confirmation_page("einvoice_login.html",request,queryset,{'image_data': img_base64})
 
+    @admin.action(description="Add to Plain Loading Sheet")
+    def add_to_loading_sheet(self, request, queryset):
+        return queryset.update(plain_loading_sheet = True)
+    
+
+    @admin.action(description="Remove from Plain Loading Sheet")
+    def remove_from_loading_sheet(self, request, queryset):
+        return queryset.update(plain_loading_sheet = False)
+
     @admin.action(description="Reload Bill")
     def printed_by_mistake(self, request, queryset):
         return queryset.update(print_time = None)
@@ -1149,6 +1161,7 @@ class BillDeliveryAdmin(CustomAdminModel) :
                        "RETAIL" : lambda qs : qs.exclude(bill__beat__contains = "WHOLESALE") ,
                        "WHOLESALE" : lambda qs : qs.filter(bill__beat__contains = "WHOLESALE") ,
                        })]
+    
     ordering = ("bill_id",)
     search_fields = ("bill","vehicle_id")
     
@@ -1612,7 +1625,28 @@ class MyAdminSite(admin.AdminSite):
         }
         context['navbar_data'] = navbar_data
         return context
+
+class TodayOut(CustomAdminModel) :
+    list_display_links = [] 
     
+    def name(obj) : 
+        return mark_safe(hyperlink(f"/app/billdelivery/?vehicle_id__name__exact={obj.name}",obj.name))
+
+    list_display = [name,"bills","loading_sheet","total"]
+    
+    def bills(self,obj) : 
+        return models.Bill.objects.filter(vehicle = obj,loading_sheet__isnull=True).count()
+    
+    def loading_sheet(self,obj) : 
+        return models.Bill.objects.filter(vehicle = obj,loading_sheet__isnull=False).values_list("loading_sheet",flat=True).distinct().count()
+    
+    def total(self,obj) : 
+        return self.bills(obj) + self.loading_sheet(obj)
+    
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs 
+
 admin_site = MyAdminSite(name='myadmin')
 admin_site.has_permission = lambda r: setattr(r, 'user', AccessUser()) or True # type: ignore
 
@@ -1634,5 +1668,7 @@ admin_site.register(models.SalesmanPendingSheet,SalesmanPendingSheetAdmin)
 admin_site.register(models.Vehicle,None)
 admin_site.register(models.SalesmanLoadingSheet,None)
 admin_site.register(models.Settings,SettingsAdmin)
+
+# admin_site.register(models.TodayBillOut,TodayOut)
 
 # admin_site.register(models.Eway,EwayAdmin)
