@@ -384,6 +384,12 @@ class TodayBillOut(Vehicle):
         proxy = True
         verbose_name = "Today Bill Out"
 
+
+class TodayBillIn(Vehicle):
+    class Meta:
+        proxy = True
+        verbose_name = "Today Bill In"
+
     
 class Sync(models.Model):
     process = models.CharField(max_length=20,primary_key=True)

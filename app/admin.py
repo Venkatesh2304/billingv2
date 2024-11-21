@@ -1664,6 +1664,27 @@ class TodayOut(CustomAdminModel) :
         if form.is_valid() :  self.date = form.cleaned_data["date"]
         return super().changelist_view(request, (extra_context or {})| {"title" : self.title, "form" : DateForm(initial = {"date":self.date}) })
     
+class TodayIn(TodayOut) :
+    list_display = ["vehicle","total_in","total_out","pending_bills"]
+    field = "delivered_time"
+    title = "Bill In To Godown"
+
+    def total_in(self,obj) : 
+        return self.total(obj)
+    
+    def total_out(self,obj) :
+        temp = (self.date,self.field) 
+        self.date -= datetime.timedelta(days=1)
+        self.field = "loading_time"
+        total = self.total(obj)
+        self.date , self.field = temp 
+        return total 
+    
+    def pending_bills(self,obj) :
+        return self.total_out(obj) - self.total_in(obj)
+    
+
+
 
 admin_site = MyAdminSite(name='myadmin')
 admin_site.has_permission = lambda r: setattr(r, 'user', AccessUser()) or True # type: ignore
@@ -1688,5 +1709,6 @@ admin_site.register(models.SalesmanLoadingSheet,None)
 admin_site.register(models.Settings,SettingsAdmin)
 
 admin_site.register(models.TodayBillOut,TodayOut)
+admin_site.register(models.TodayBillIn,TodayIn)
 
 # admin_site.register(models.Eway,EwayAdmin)
