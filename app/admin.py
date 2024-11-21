@@ -1640,10 +1640,10 @@ class TodayOut(CustomAdminModel) :
     list_display = [name,"bills","loading_sheet","total"]
     
     def bills(self,obj) : 
-        return models.Bill.objects.filter(loading_time__gte = datetime.date.today() ,vehicle = obj,loading_sheet__isnull=True).count()
+        return models.Bill.objects.filter(loading_time__date = datetime.date.today() ,vehicle = obj,loading_sheet__isnull=True).count()
     
     def loading_sheet(self,obj) : 
-        return models.Bill.objects.filter(loading_time__gte = datetime.date.today() , 
+        return models.Bill.objects.filter(loading_time__date = datetime.date.today() , 
                                           vehicle = obj,loading_sheet__isnull=False).values_list("loading_sheet",flat=True).distinct().count()
     
     def total(self,obj) : 
