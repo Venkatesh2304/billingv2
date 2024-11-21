@@ -31,6 +31,9 @@ pd.options.display.float_format = '{:.2f}'.format
 # exit(0)
 from app.models import Orders,OrderProducts
 
+print( pd.read_sql(f"select * from app_sales where inum = 'A57964'",connection)  )
+print( pd.read_sql(f"select * from app_bill where bill_id = 'A57964'",connection)  )
+sdf
 print( pd.read_sql(f"select * from app_orderproducts where order_id = '20SMN00014P1600020241121'",connection)  )
 # 90SMN00014P1600020241121
 
