@@ -828,7 +828,7 @@ class PrintAdmin(CustomAdminModel) :
     
     permissions = [Permission.change]
     change_list_template = "form_and_changelist.html"
-    list_display = ["bill","party","salesman","print_type","print_time",delivered,"einvoice","amount","vehicle"]#,"einvoice","ctin"]
+    list_display = ["bill","party","salesman","print_type","print_time","einvoice","amount",delivered,"vehicle"]#,"einvoice","ctin"]
     ordering = ["bill"]
     actions = ["both_copy","loading_sheet_salesman","first_copy","second_copy","loading_sheet","double_first_copy","printed_by_mistake"]
     custom_views = [("print_party_autocomplete",PartyAutocomplete.as_view()),
@@ -928,7 +928,7 @@ class PrintAdmin(CustomAdminModel) :
     
     @admin.display(boolean=True)
     def einvoice(self,obj):  
-        return bool(obj.bill.ctin is None) or hasattr(obj.bill,"einvoice")
+        return bool(obj.bill.ctin is None) or bool(obj.irn)
     
     def salesman(self,obj) :
         return models.Beat.objects.filter(name = obj.bill.beat).first().salesman_name
@@ -953,9 +953,9 @@ class PrintAdmin(CustomAdminModel) :
         # Generate e-invoice JSON from Billing
         inums = einv_qs.values_list("bill_id", flat=True)
         bytesio = billing.einvoice_json(fromd=from_date, tod=to_date, bills=inums)
-        
         if bytesio : 
             json_str = bytesio.getvalue().decode('utf-8')  # Convert BytesIO to string
+            print(json_str)
             success, failures = Einvoice().upload(json_str)
             failed_inums = failures.get("Invoice No", []).tolist()
             if failures.shape[0]:
@@ -1040,7 +1040,7 @@ class PrintAdmin(CustomAdminModel) :
             is_success , error = einvoice_service.login(captcha)
             if error : messages.error(request,f"Einvoice Login Failed : {error}")
 
-        if einv_count or einvoice_service.is_logged_in():
+        if (einv_count==0) or einvoice_service.is_logged_in():
             if einv_count:
                 self.handle_einvoice_upload(request,einv_qs)
 
@@ -1125,7 +1125,6 @@ class PrintAdmin(CustomAdminModel) :
             cancel_link = f"{request.get_full_path()}&confirm=false"
             return HttpResponse(f"<script>if(confirm('{response_text}')) {{ window.location.href='{confirm_link}'; }} else {{ window.location.href='{cancel_link}'; }}</script>")
           
-        
 class RetailPrintAdmin(PrintAdmin) : 
     title = "Retail Bills"
     def get_queryset(self, request):
@@ -1382,7 +1381,7 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
         color_in_hex = [cell.fill.start_color.index for cell in sh['A:A']]
         basepack["color"] = pd.Series( color_in_hex[1:])
         basepack = basepack[ basepack["color"] != 52 ][basepack["BasePack Code"].notna()]
-        basepack["new_status"] = basepack["BasePack Code"].astype(int).isin( self.active_basepack_codes  )
+        basepack["new_status"] = basepack["BasePack Code"].isin([ str(code) for code in self.active_basepack_codes ])
         basepack = basepack[ basepack["new_status"] != (basepack["Status"] == "ACTIVE") ]
         basepack.to_excel("basepack.xlsx",index=False,sheet_name="Basepack Information")      
         basepack["Status"] = basepack["Status"].replace({ "ACTIVE" : "INACTIVE_x" , "INACTIVE" : "ACTIVE_x" })

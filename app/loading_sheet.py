@@ -105,10 +105,12 @@ def create_pdf(tables:tuple[pd.DataFrame],sheet_type:LoadingSheetType,context = 
     header_table = []
 
     if sheet_type == LoadingSheetType.Salesman :
+        pdf.cell(0, 10, "DEVAKI ENTERPRISES", 0, 0, 'L')
+        pdf.ln()        
         header_table.append(["TIME",time,"","","VALUE",total_value])
         header_table.append(["SALESMAN",context["salesman"] ,"","","BEAT",context["beat"]])
         header_table.append(["PARTY",(context["party"] or "SALESMAN").ljust(34).upper(),"","","TOTAL CASE",str(int(total_fc or "0") + int(total_lc or "0"))])
-        header_table.append(["BILL",context["inum"],"","","",""])
+        header_table.append(["BILL",context["inum"],"","","PHONE","9944833444"])
         df["Case"] = (df["FC"].apply(lambda x: int(x) if x else 0) + df["LC"].apply(lambda x: int(x) if x else 0)).astype(str).replace("0","")
         dfs = df[["No","Product Name","MRP","Case","Units","UPC","Gross Value"]]
         dfs.loc[len(dfs.index)] = ["","Total"] + [""] * 4 + [total_value]
