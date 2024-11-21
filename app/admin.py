@@ -1631,8 +1631,9 @@ class TodayOut(CustomAdminModel) :
     list_display_links = [] 
     
     def name(obj) : 
+        today = datetime.datetime.combine(datetime.date.today(), datetime.datetime.min.time())
         return mark_safe(hyperlink(
-            query_url("admin:app_billdelivery_changelist" , { "vehicle_id__name__exact":obj.name,"loading_time__gte":str(datetime.date.today()) }), obj.name))
+            query_url("admin:app_billdelivery_changelist" , { "vehicle_id__name__exact":obj.name,"loading_time__gte": str(today) }), obj.name))
 
     list_display = [name,"bills","loading_sheet","total"]
     
