@@ -1632,11 +1632,10 @@ class TodayOut(CustomAdminModel) :
 
     list_display_links = [] 
     
-    list_display = ["Name","bills","loading_sheet","total"]
+    list_display = ["vehicle","bills","loading_sheet","total"]
     
 
-    @admin.display(description="Name")
-    def Name(self,obj) : 
+    def vehicle(self,obj) : 
         today = datetime.datetime.combine(self.date , datetime.datetime.min.time())
         tommorow = datetime.datetime.combine(self.date + datetime.timedelta(days=1), datetime.datetime.min.time())
         return mark_safe(hyperlink(
@@ -1658,13 +1657,12 @@ class TodayOut(CustomAdminModel) :
     
     def changelist_view(self, request, extra_context=None):    
         class DateForm(forms.Form) :
-            date = forms.DateField(required=True,initial=datetime.date.today(),
-                                   widget=forms.DateInput(attrs={'type' : 'date'}))
+            date = forms.DateField(required=True,widget=forms.DateInput(attrs={'type' : 'date'}))
             Submit = submit_button("Submit")
         self.date = datetime.date.today() 
         form = DateForm(request.POST)
         if form.is_valid() :  self.date = form.cleaned_data["date"]
-        return super().changelist_view(request, (extra_context or {})| {"title" : "Bill Out From Godown", "form" : DateForm() })
+        return super().changelist_view(request, (extra_context or {})| {"title" : "Bill Out From Godown", "form" : DateForm(initial = {"date":self.date}) })
     
 
 admin_site = MyAdminSite(name='myadmin')
