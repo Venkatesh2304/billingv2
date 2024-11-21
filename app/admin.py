@@ -942,7 +942,8 @@ class PrintAdmin(CustomAdminModel) :
     def changelist_view(self, request: HttpRequest, extra_context = {}) -> TemplateResponse:
         sync_reports(limits={"sales":5*60})
         bill_count = self.get_queryset(request).filter(print_time__isnull = True,bill__date = datetime.date.today()).count()
-        return super().changelist_view(request, extra_context | {"title" : f"{self.title} - {bill_count} Not Printed Today"})
+        warning = "(Einvoice Disabled)" if not models.Settings.objects.get(key = "einvoice").status else ""
+        return super().changelist_view(request, extra_context | {"title" : f"{self.title} - {bill_count} Not Printed Today {warning}"})
 
     def handle_einvoice_upload(self,request,einv_qs):
         # Aggregate date range for the invoices
