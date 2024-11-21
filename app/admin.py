@@ -1632,15 +1632,17 @@ class TodayOut(CustomAdminModel) :
 
     list_display_links = [] 
     
-    def name(obj) : 
-        today = datetime.datetime.combine(datetime.date.today(), datetime.datetime.min.time())
-        tommorow = datetime.datetime.combine(datetime.date.today() + datetime.timedelta(days=1), datetime.datetime.min.time())
+    list_display = ["Name","bills","loading_sheet","total"]
+    
+
+    @admin.display(description="Name")
+    def Name(self,obj) : 
+        today = datetime.datetime.combine(self.date , datetime.datetime.min.time())
+        tommorow = datetime.datetime.combine(self.date + datetime.timedelta(days=1), datetime.datetime.min.time())
         return mark_safe(hyperlink(
             query_url("admin:app_billdelivery_changelist" , { "vehicle_id__name__exact":obj.name,"loading_time__gte": str(today),
                                                              "loading_time__lt": str(tommorow) }), obj.name))
 
-    list_display = [name,"bills","loading_sheet","total"]
-    
     def get_bills_queryset(self,vehicle) : 
         return models.Bill.objects.filter(loading_time__date = self.date,vehicle = vehicle)
     
@@ -1656,7 +1658,7 @@ class TodayOut(CustomAdminModel) :
     
     def changelist_view(self, request, extra_context=None):    
         class DateForm(forms.Form) :
-            date = forms.DateField(required=False,initial=datetime.date.today(),
+            date = forms.DateField(required=True,initial=datetime.date.today(),
                                    widget=forms.DateInput(attrs={'type' : 'date'}))
             Submit = submit_button("Submit")
         self.date = datetime.date.today() 
