@@ -1643,7 +1643,7 @@ class TodayOut(CustomAdminModel) :
         return models.Bill.objects.filter(loading_time__date = date,vehicle = vehicle)
     
     def beats(self,obj) : 
-        return str( list(self.get_bills_queryset(obj , datetime.date.today()).select_related("bill__beat").values_list("bill__beat",flat=True)) )
+        return ",".join( set(self.get_bills_queryset(obj , datetime.date.today()).select_related("bill__beat").values_list("bill__beat",flat=True)) )
     
     def bills(self,obj) : 
         return self.get_bills_queryset(obj , datetime.date.today()).filter(loading_sheet__isnull=True).count()
