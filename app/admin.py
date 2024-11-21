@@ -1635,15 +1635,16 @@ class TodayOut(CustomAdminModel) :
         tommorow = datetime.datetime.combine(datetime.date.today() + datetime.timedelta(days=1), datetime.datetime.min.time())
         return mark_safe(hyperlink(
             query_url("admin:app_billdelivery_changelist" , { "vehicle_id__name__exact":obj.name,"loading_time__gte": str(today),
-                                                             "loading_time__lte": str(tommorow) }), obj.name))
+                                                             "loading_time__lt": str(tommorow) }), obj.name))
 
     list_display = [name,"bills","loading_sheet","total"]
     
     def bills(self,obj) : 
-        return models.Bill.objects.filter(vehicle = obj,loading_sheet__isnull=True).count()
+        return models.Bill.objects.filter(loading_time__gte = datetime.date.today() ,vehicle = obj,loading_sheet__isnull=True).count()
     
     def loading_sheet(self,obj) : 
-        return models.Bill.objects.filter(vehicle = obj,loading_sheet__isnull=False).values_list("loading_sheet",flat=True).distinct().count()
+        return models.Bill.objects.filter(loading_time__gte = datetime.date.today() , 
+                                          vehicle = obj,loading_sheet__isnull=False).values_list("loading_sheet",flat=True).distinct().count()
     
     def total(self,obj) : 
         return self.bills(obj) + self.loading_sheet(obj)
