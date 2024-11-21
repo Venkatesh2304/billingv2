@@ -1634,7 +1634,8 @@ class TodayOut(CustomAdminModel) :
         today = datetime.datetime.combine(datetime.date.today(), datetime.datetime.min.time())
         tommorow = datetime.datetime.combine(datetime.date.today() + datetime.timedelta(days=1), datetime.datetime.min.time())
         return mark_safe(hyperlink(
-            query_url("admin:app_billdelivery_changelist" , { "vehicle_id__name__exact":obj.name,"loading_time__gte": str(today) }), obj.name))
+            query_url("admin:app_billdelivery_changelist" , { "vehicle_id__name__exact":obj.name,"loading_time__gte": str(today),
+                                                             "loading_time__lte": str(tommorow) }), obj.name))
 
     list_display = [name,"bills","loading_sheet","total"]
     
