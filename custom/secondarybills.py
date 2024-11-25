@@ -5,8 +5,9 @@ from docx.shared import Inches,Length,Pt,Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 def collection(file,document,barcode_generator) :
- with open(file) as f : 
-   x1=f.read()
+ f=open(file)
+ x1=f.read()
+ f.close()
  x=x1.split('\n')
  values=['Region','Invoice No','Invoice Date','Retailer PAN']
  first,last,billval=[],[],[]

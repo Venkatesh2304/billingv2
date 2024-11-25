@@ -840,14 +840,14 @@ class PrintAdmin(CustomAdminModel) :
 
     PRINT_ACTION_CONFIG = {
         PrintType.FIRST_COPY: {
-            'create_bill': lambda billing, group, context: billing.Download(bills=group,pdf=True, txt=False) or 
+            'create_bill': lambda billing, group, context,cash_bills : billing.Download(bills=group,pdf=True, txt=False,cash_bills=cash_bills) or 
                     aztec.add_aztec_codes_to_pdf("bill.pdf","bill.pdf",PrintType.FIRST_COPY) ,
             'file_names': "bill.pdf",
             'update_fields': lambda context : {'print_type': PrintType.FIRST_COPY.value} ,
             'allow_printed'  : False , 
         },
         PrintType.SECOND_COPY: {
-            'create_bill': lambda billing, group, context: billing.Download(bills=group,pdf=False, txt=True) or 
+            'create_bill': lambda billing, group, context,cash_bills : billing.Download(bills=group,pdf=False, txt=True,cash_bills=cash_bills) or 
                                                             secondarybills.main('bill.txt', 'bill.docx',aztec.generate_aztec_code),
             'file_names': "bill.docx" ,
             'allow_printed'  : True , 
@@ -940,7 +940,7 @@ class PrintAdmin(CustomAdminModel) :
         return obj.bill.party.name
     
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
-        return super().get_queryset(request).filter(bill__date__gte = datetime.date.today() - datetime.timedelta(days=2)) #change
+        return super().get_queryset(request) #.filter(bill__date__gte = datetime.date.today() - datetime.timedelta(days=2)) #change
 
     def changelist_view(self, request: HttpRequest, extra_context = {}) -> TemplateResponse:
         sync_reports(limits={"sales":5*60})
@@ -996,13 +996,14 @@ class PrintAdmin(CustomAdminModel) :
 
         config = self.PRINT_ACTION_CONFIG[print_type]
         bills = [bill.bill_id for bill in queryset]
+        cash_bills = [bill.bill_id for bill in queryset.filter(cash_bill = True)]
 
         # Get additional context for the action (like salesman details if needed)
         context = {}
         if config.get('get_context') :
             context = config['get_context'](request,queryset)
         
-        config['create_bill'](billing, bills, context)
+        config['create_bill'](billing, bills, context, cash_bills)
         file_names = config['file_names'].split(",")
         
         # Print the file
@@ -1057,7 +1058,8 @@ class PrintAdmin(CustomAdminModel) :
                     already_printed = queryset.filter(print_time__isnull=False) 
                     if already_printed and already_printed.exists():
                         messages.warning(request, f"Bills are already printed for {already_printed.values_list('bill_id', flat=True)}")
-                    self.print_bills(request, billing, queryset.filter(print_time__isnull=True), print_type)
+                    queryset = queryset.filter(print_time__isnull=True)
+                    self.print_bills(request, billing, queryset, print_type)
                 else : 
                     self.print_bills(request, billing, queryset, print_type)
             return 
@@ -1070,14 +1072,13 @@ class PrintAdmin(CustomAdminModel) :
     def add_to_loading_sheet(self, request, queryset):
         return queryset.update(plain_loading_sheet = True)
     
-
     @admin.action(description="Remove from Plain Loading Sheet")
     def remove_from_loading_sheet(self, request, queryset):
         return queryset.update(plain_loading_sheet = False)
 
     @admin.action(description="Reload Bill")
     def printed_by_mistake(self, request, queryset):
-        return queryset.update(print_time = None)
+        return queryset.update(print_time = None,is_reloaded = True)
 
     @admin.action(description="Both Copy")
     def both_copy(self, request, queryset):
@@ -1128,8 +1129,7 @@ class PrintAdmin(CustomAdminModel) :
             if confirm_undo : 
                 qs = models.Bill.objects.filter(bill_id__in=id_list)
                 loading_sheets = list(qs.values_list("loading_sheet",flat=True).distinct())
-                qs.update(print_time=None,loading_sheet=None)
-                print( loading_sheets )
+                qs.update(print_time=None,loading_sheet=None,is_reloaded = True)
                 models.SalesmanLoadingSheet.objects.filter(inum__in = loading_sheets).delete()
             return redirect(redirect_url)
         else :

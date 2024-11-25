@@ -125,11 +125,10 @@ def vehicle_selection(request) :
     return render(request, 'vehicle_selection.html', {'form': form})
 
 def get_bill_data(request):
-    print( request.method ,   request.POST )
     if request.method == 'POST':
         data = request.POST.get('data')
         data = json.loads(data)
-        inum = data.get("inum")
+        inum = data.get("inum").upper()
         if len(inum) == 5 : inum = "A" + inum 
         vehicle = data.get("vehicle")
         bill_type = data.get("type")

@@ -11,6 +11,11 @@ from reportlab.lib.pagesizes import A4
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.lib.utils import ImageReader
 from app.admin import PrintType 
+from io import BytesIO
+from PyPDF2 import PdfReader, PdfWriter
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+
 
 def extract_invoice_number_first_copy(page):
     """Extract the invoice number from the page."""
@@ -96,6 +101,37 @@ def add_aztec_codes_to_pdf(input_pdf_path, output_pdf_path,print_type : PrintTyp
     # Save the final output PDF
     with open(output_pdf_path, "wb") as output_file:
         output_pdf_writer.write(output_file)
+
+def add_image_to_pdf(pdf_path, image_path , x, y, width, height,insert_page_nums = []):
+
+    if insert_page_nums : return pdf_path 
+    temp_pdf_path = BytesIO()
+    c = canvas.Canvas(temp_pdf_path, pagesize=letter)
+    CM_TO_POINT = 28.35
+    border = 0.05 * CM_TO_POINT
+    x = x*CM_TO_POINT
+    y = y*CM_TO_POINT
+    w = width*CM_TO_POINT
+    h = height*CM_TO_POINT
+    c.rect(x - border, y - border, w + 2 * border, h + 2 * border, stroke=1, fill=0)
+    c.drawImage(image_path, x, y, w, h)
+    c.showPage()
+    c.save()
+
+    # Read the original PDF and the newly created PDF with the image
+    original_pdf = PdfReader(pdf_path)
+    pdf_writer = PdfWriter()
+    image_pdf = PdfReader(temp_pdf_path)    
+    image_page = image_pdf.pages[0]  # Assuming the image is only on the first page
+
+    for num,page in enumerate(original_pdf.pages) :
+        if num in insert_page_nums : page.merge_page(image_page)
+        pdf_writer.add_page(page)
+
+    output = BytesIO()
+    pdf_writer.write(output)
+    return output 
+
 
 # Example usage
 # add_aztec_codes_to_pdf("loading.pdf", "output_with_barcode.pdf")

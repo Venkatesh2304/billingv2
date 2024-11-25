@@ -29,6 +29,7 @@ from .curl import get_curl , curl_replace
 from .Session import Session,StatusCodeError
 from bs4 import BeautifulSoup
 from PyPDF2 import PdfMerger
+from .std import add_image_to_bills
 
 class IkeaPasswordExpired(Exception) :
     pass
@@ -520,15 +521,21 @@ class Billing(IkeaDownloader) :
 
         return groups
 
-    def Download(self,bills = None,pdf=True,txt=True):
+    def Download(self,bills = None,pdf=True,txt=True,cash_bills = []):
         if bills is not None : self.bills = bills 
         if len(self.bills) == 0 : return
         get_bill_durl = lambda billfrom,billto,report_type : self.get(f"/rsunify/app/commonPdfRptContrl/pdfRptGeneration?strJsonParams=%7B%22billFrom%22%3A%22{billfrom}%22%2C%22billTo%22%3A%22{billto}%22%2C%22reportType%22%3A%22{report_type}%22%2C%22blhVatFlag%22%3A2%2C%22shade%22%3A1%2C%22pack%22%3A%22910%22%2C%22damages%22%3Anull%2C%22halfPage%22%3A0%2C%22bp_division%22%3A%22%22%2C%22salesMan%22%3A%22%22%2C%22party%22%3A%22%22%2C%22market%22%3A%22%22%2C%22planset%22%3A%22%22%2C%22fromDate%22%3A%22%22%2C%22toDate%22%3A%22%22%2C%22veh_Name%22%3A%22%22%2C%22printId%22%3A0%2C%22printerName%22%3A%22TVS+MSP+250+Star%22%2C%22Lable_position%22%3A2%2C%22billType%22%3A2%2C%22printOption%22%3A%220%22%2C%22RptClassName%22%3A%22BILL_PRINT_REPORT%22%2C%22reptName%22%3A%22billPrint%22%2C%22RptId%22%3A%22910%22%2C%22freeProduct%22%3A%22Default%22%2C%22shikharQrCode%22%3Anull%2C%22rptTypOpt%22%3A%22pdf%22%2C%22gstTypeVal%22%3A%221%22%2C%22billPrint_isPrint%22%3A0%2C%22units_only%22%3A%22Y%22%7D").text
         pdfs , txts = [], []
+
         for group in self.group_consecutive_bills(self.bills) :
-            self.billfrom, self.billto = group[0],  group[-1]
-            if pdf : pdfs.append( self.download_file( get_bill_durl(self.billfrom,self.billto,"pdf")) )
-            if txt: txts.append( self.download_file( get_bill_durl(self.billfrom,self.billto,"txt")) )
+            if txt: txts.append( self.download_file( get_bill_durl(group[0],group[-1],"txt")) )
+
+        for group in self.group_consecutive_bills(set(self.bills) - set(cash_bills)) :
+            if pdf : pdfs.append( self.download_file( get_bill_durl(group[0],group[-1],"pdf")) )
+
+        for group in self.group_consecutive_bills(cash_bills) :
+            if pdf : pdfs.append( add_image_to_bills( self.download_file( get_bill_durl(group[0],group[-1],"pdf")) ,
+                                                          'cash_bill.png' , 8, 24, 1.9, 1.9 ))
 
         if pdf :     
             merger = PdfMerger()

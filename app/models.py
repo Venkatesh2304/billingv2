@@ -226,6 +226,7 @@ class Bill(models.Model) :
     bill = models.OneToOneField("app.Sales",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING,primary_key=True)
     print_time = models.DateTimeField(null=True,blank=True)
     print_type = models.TextField(max_length=20,choices=(("first_copy","First Copy"),("loading_sheet","Loading Sheet")),null=True,blank=True)
+    is_reloaded = models.BooleanField(default=False,db_default=False)
     reason = models.TextField(max_length=100,null=True,blank=True)
     loading_sheet = models.ForeignKey(SalesmanLoadingSheet,on_delete=models.DO_NOTHING,related_name="bills",null=True,blank=True)
     vehicle = models.ForeignKey("app.Vehicle",on_delete=models.DO_NOTHING,related_name="bills",null=True,blank=True)
@@ -234,6 +235,7 @@ class Bill(models.Model) :
     irn = models.TextField(null=True,blank=True)
     delivered = models.BooleanField(null=True,blank=True)
     plain_loading_sheet = models.BooleanField(db_default=False,default=False)
+    cash_bill = models.BooleanField(default=False,db_default=False)
     
 
 class RetailPrint(Bill):
