@@ -853,14 +853,14 @@ class PrintAdmin(CustomAdminModel) :
             'allow_printed'  : True , 
         },
         PrintType.LOADING_SHEET: {
-            'create_bill': lambda billing, group, context: loading_sheet.create_pdf(billing.loading_sheet(group), 
+            'create_bill': lambda billing, group, context,cash_bills: loading_sheet.create_pdf(billing.loading_sheet(group), 
                                                                                     sheet_type=loading_sheet.LoadingSheetType.Plain) 
                                                             or models.Bill.objects.filter(bill_id__in = group).update(plain_loading_sheet=True) ,
             'file_names': "loading.pdf", 
             'allow_printed'  : True , 
         },
         PrintType.LOADING_SHEET_SALESMAN: {
-            'create_bill': lambda billing, group, context: 
+            'create_bill': lambda billing, group, context,cash_bills : 
                     loading_sheet.create_pdf(billing.loading_sheet(group), sheet_type=loading_sheet.LoadingSheetType.Salesman,
                                                 context=context) or 
                     aztec.add_aztec_codes_to_pdf("loading.pdf","loading.pdf",PrintType.LOADING_SHEET_SALESMAN) ,
