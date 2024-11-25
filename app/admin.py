@@ -1678,7 +1678,7 @@ class TodayIn(TodayOut) :
     def total_out(self,obj) :
         temp = (self.date,self.field)
         last_loading = models.BillDelivery.objects.exclude(loading_time__date = self.date).order_by("-loading_time").first()
-        self.date = last_loading.loading_time.date if last_loading else (self.date - datetime.timedelta(days=1)) # type: ignore
+        self.date = last_loading.loading_time.date() if last_loading else (self.date - datetime.timedelta(days=1)) # type: ignore
         self.field = "loading_time"
         total = self.total(obj)
         self.date , self.field = temp 
