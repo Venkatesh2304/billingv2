@@ -7,7 +7,7 @@ from io import BytesIO
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-# import fitz
+import pymupdf
 import re
 
 def extract_invoice_number_bill(page):
@@ -20,7 +20,6 @@ def extract_invoice_number_bill(page):
     return None
 
 def add_image_to_bills(pdf_path, image_path , x, y, width, height):
-    return pdf_path
     temp_pdf_path = BytesIO()
     c = canvas.Canvas(temp_pdf_path, pagesize=letter)
     CM_TO_POINT = 28.35
@@ -36,7 +35,7 @@ def add_image_to_bills(pdf_path, image_path , x, y, width, height):
 
     # Read the original PDF and the newly created PDF with the image
     original_pdf = PdfReader(pdf_path)
-    original_pdf_txt_reader = fitz.open(stream=pdf_path)
+    original_pdf_txt_reader = pymupdf.open(stream=pdf_path)
     pdf_writer = PdfWriter()
     image_pdf = PdfReader(temp_pdf_path)    
     image_page = image_pdf.pages[0]  # Assuming the image is only on the first page
