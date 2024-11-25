@@ -7,7 +7,7 @@ from io import BytesIO
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-import fitz
+# import fitz
 import re
 
 def extract_invoice_number_bill(page):
@@ -20,7 +20,7 @@ def extract_invoice_number_bill(page):
     return None
 
 def add_image_to_bills(pdf_path, image_path , x, y, width, height):
-
+    return pdf_path
     temp_pdf_path = BytesIO()
     c = canvas.Canvas(temp_pdf_path, pagesize=letter)
     CM_TO_POINT = 28.35
