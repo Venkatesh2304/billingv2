@@ -1,6 +1,5 @@
 # pdf_utils.py
 from collections import namedtuple
-import fitz 
 from io import BytesIO
 import re
 import traceback
