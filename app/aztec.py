@@ -15,7 +15,7 @@ from io import BytesIO
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-
+import pymupdf
 
 def extract_invoice_number_first_copy(page):
     """Extract the invoice number from the page."""
@@ -76,7 +76,7 @@ def process_pdf_page(page,config:BarcodeConfig):
 def add_aztec_codes_to_pdf(input_pdf_path, output_pdf_path,print_type : PrintType):
     """Add Aztec codes to a PDF based on extracted invoice numbers."""
     input_pdf_reader = PdfReader(input_pdf_path)
-    input_pdf_document = fitz.open(input_pdf_path)
+    input_pdf_document = pymupdf.open(input_pdf_path)
     output_pdf_writer = PdfWriter()
 
     # Use ThreadPoolExecutor to parallelize page processing
