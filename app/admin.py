@@ -1154,6 +1154,8 @@ class WholeSalePrintAdmin(PrintAdmin) :
     def get_queryset(self, request):
         return super().get_queryset(request).filter(bill__beat__contains = "WHOLESALE")
 
+
+
 class BillDeliveryAdmin(CustomAdminModel) : 
     list_display = ["bill_id","party","vehicle_id","loading_time","delivered","delivered_time","is_loading_sheet"]
     list_filter = ["vehicle_id","loading_time","delivered_time",
@@ -1674,8 +1676,9 @@ class TodayIn(TodayOut) :
         return self.total(obj)
     
     def total_out(self,obj) :
-        temp = (self.date,self.field) 
-        self.date -= datetime.timedelta(days=1)
+        temp = (self.date,self.field)
+        last_loading = models.BillDelivery.objects.exclude(loading_time__date = self.date).order_by("-loading_time").first()
+        self.date = last_loading.loading_time.date if last_loading else (self.date - datetime.timedelta(days=1)) # type: ignore
         self.field = "loading_time"
         total = self.total(obj)
         self.date , self.field = temp 
