@@ -385,6 +385,7 @@ class CustomAdminModel(ModelPermission,admin.ModelAdmin) :
     show_on_navbar = True
     permissions = []
     custom_views:list[tuple[str,str|Callable]] = []
+    hidden_fields = []
 
     def __init__(self, model, admin_site):
         super().__init__(model, admin_site)
@@ -406,6 +407,13 @@ class CustomAdminModel(ModelPermission,admin.ModelAdmin) :
                              for view_name , view_fn in self.custom_views ] ## Supports viewname/<str:param>
         return custom_urls + urls 
     
+    def get_fields(self, request, obj=None):
+        fields = super().get_fields(request, obj)
+        if obj:  
+            return [field for field in fields if field not in self.hidden_fields]
+        return fields
+
+
 class BaseOrderAdmin(CustomAdminModel) :   
     
     class OrderProductsInline(ModelPermission,admin.TabularInline) : 
@@ -517,7 +525,11 @@ class BaseProcessStatusAdmin(CustomAdminModel) :
             end_time = time.time()
             process_log.time = round(end_time - start_time,2)
             process_log.save()
-            
+
+#Dummy Admins 
+class PartyAdmin(CustomAdminModel) : 
+    search_fields = ["name"]
+    ordering = ["name"]            
 
 ## Billing Admin
 class BillingAdmin(BaseOrderAdmin) :   
@@ -799,9 +811,6 @@ class SalesCollectionAdmin(CustomAdminModel) :
         models.SalesmanCollection.fetch_from_mongo()
         return super().changelist_view(request, extra_context = extra_context | {"title" : ""}) # type: ignore
         
-from django import forms
-from django.utils.translation import gettext_lazy as _
-from rangefilter.filters import NumericRangeFilter
 
 def create_admin_form_filter(title,form) : 
     class CustomFormFilter(NumericRangeFilter):
@@ -934,7 +943,8 @@ class PrintAdmin(CustomAdminModel) :
         return bool(obj.bill.ctin is None) or bool(obj.irn)
     
     def salesman(self,obj) :
-        return models.Beat.objects.filter(name = obj.bill.beat).first().salesman_name
+        beat = models.Beat.objects.filter(name = obj.bill.beat).first()
+        return beat.salesman_name if beat else None
 
     def party(self,obj) : 
         return obj.bill.party.name
@@ -992,7 +1002,7 @@ class PrintAdmin(CustomAdminModel) :
 
         return failed_inums
 
-    def print_bills(self, request, billing: Billing, queryset, print_type: PrintType):
+    def print_bills(self, request, billing: Billing, queryset, print_type: PrintType,merger):
 
         config = self.PRINT_ACTION_CONFIG[print_type]
         bills = [bill.bill_id for bill in queryset]
@@ -1005,33 +1015,17 @@ class PrintAdmin(CustomAdminModel) :
         
         config['create_bill'](billing, bills, context, cash_bills)
         file_names = config['file_names'].split(",")
+        for file in file_names :
+            if file.endswith(".docx") : 
+                os.system(f"libreoffice --headless --convert-to pdf {file}")
+                file = file.replace(".docx",".pdf") 
+            with open(file, "rb") as pdf_file:
+                merger.append(pdf_file)
         
-        # Print the file
-        status = billing.Printbill(bills = bills,print_files=file_names)
-        status = True  # placeholder
-    
-        # Update the queryset if required by the action
-        if status and 'update_fields' in config:
+        if 'update_fields' in config:
             queryset.update(**config['update_fields'](context), print_time=datetime.datetime.now())
-         
-        for file_name in list(set(file_names)) : 
-            renamed_file = f"{file_name.split('.')[0]}_{bills[0]}_{bills[-1]}.{file_name.split('.')[1]}"
-            shutil.copyfile(file_name,f"bills/{renamed_file}")
-
-            undo_url = reverse("admin:undo_print") + f"?inums={','.join(bills)}" + f"&next={quote(str(request.get_full_path()))}"
-            # Generate the download link
-            link = hyperlink(f"/static/{renamed_file}",print_type.name.upper(),style="text-decoration:underline;color:blue;") 
-            
-            if not config["allow_printed"] :
-                undo_link = hyperlink(undo_url,"Printed By Mistake?",style="text-decoration:underline;color:blue;margin-left:5px;",new_tab=False) 
-            else : 
-                undo_link = ""
-
-            if status:
-                messages.success(request, mark_safe(f"Successfully printed {link}: {bills[0]} - {bills[-1]} {undo_link}"))
-            else:
-                messages.error(request, mark_safe(f"Bills failed to print {link}: {bills[0]} - {bills[-1]} {undo_link}"))
-                    
+                
+      
     def base_print_action(self, request, queryset, print_types):
         queryset = queryset.filter(bill__delivered = True)
         
@@ -1051,6 +1045,7 @@ class PrintAdmin(CustomAdminModel) :
 
             billing = Billing()
             bills = list(queryset.values_list('bill_id', flat=True))
+            merger = PdfMerger()
             for print_type in print_types:
                 allow_already_printed = self.PRINT_ACTION_CONFIG[print_type]["allow_printed"]
                 queryset = models.Bill.objects.filter(bill_id__in=bills)
@@ -1059,9 +1054,29 @@ class PrintAdmin(CustomAdminModel) :
                     if already_printed and already_printed.exists():
                         messages.warning(request, f"Bills are already printed for {already_printed.values_list('bill_id', flat=True)}")
                     queryset = queryset.filter(print_time__isnull=True)
-                    self.print_bills(request, billing, queryset, print_type)
+                    self.print_bills(request, billing, queryset, print_type, merger)
                 else : 
-                    self.print_bills(request, billing, queryset, print_type)
+                    self.print_bills(request, billing, queryset, print_type, merger)
+            merger.write("bill.pdf")
+            merger.close()
+            code = f"""
+            <script>
+            const url = '/static/bill.pdf' ; // Replace with the desired URL
+            const iframe = document.createElement("iframe");
+            iframe.style.display = "none";
+            iframe.src = url;
+            document.body.appendChild(iframe);
+
+            iframe.onload = () => {{
+                iframe.contentWindow.focus(); // Focus on iframe content
+                iframe.contentWindow.print(); // Trigger the print command
+            }};
+            </script>
+            """
+            undo_url = reverse("admin:undo_print") + f"?inums={','.join(bills)}" + f"&next={quote(str(request.get_full_path()))}"
+            undo_link = hyperlink(undo_url,"Printed By Mistake?",style="text-decoration:underline;color:blue;margin-left:5px;",new_tab=False) 
+            link = hyperlink(f"/static/bill",f"{bills[0]} - {bills[-1]}",style="text-decoration:underline;color:blue;") 
+            messages.success(request, mark_safe(code + f"Successfully printed {link}: {undo_link}"))
             return 
 
         captcha_img = einvoice_service.captcha()
@@ -1186,38 +1201,116 @@ class BillDeliveryAdmin(CustomAdminModel) :
             pass
         return response
     
-class BankAdmin(CustomAdminModel) : 
 
-    class BankCollectionInline(admin.TabularInline) : 
-        class BankCollectionForm(forms.ModelForm):
-            party  = forms.CharField(label="Party",required=False,disabled=True)
-            balance  = forms.DecimalField(max_digits=10, decimal_places=2, required=False, label='Outstanding',disabled=True)
-            class Meta:
-                model = models.BankCollection
-                fields = ["bill","party","balance","amt"]
-                widgets = {
-                    'bill': dal.autocomplete.ModelSelect2(url='/app/bank/billautocomplete') ,  
-                    "amt" : forms.TextInput()   ,
-                }
-                
-        model = models.BankCollection
-        show_change_link = False
-        verbose_name_plural = "collection"
-        form = BankCollectionForm
-        extra = 1 
-        class Media:
-            js = ('admin/js/bank_inline.js',)
+
+class BankCollectionInline(admin.TabularInline) : 
+    class BankCollectionForm(forms.ModelForm):
+        party  = forms.CharField(label="Party",required=False,disabled=True)
+        balance  = forms.DecimalField(max_digits=10, decimal_places=2, required=False, label='Outstanding',disabled=True)
+        class Meta:
+            model = models.BankCollection
+            fields = ["bill","party","balance","amt"]
+            widgets = {
+                'bill': dal.autocomplete.ModelSelect2(url='/app/chequedeposit/billautocomplete') ,  
+                "amt" : forms.TextInput()   ,
+            }
             
-    change_list_template = "form_and_changelist.html"
-    permissions = [Permission.change]
-    list_display = ["date","ref","desc","amt","saved","pushed"]
-    readonly_fields = ["date","pushed","ref","desc","amt","bank","idx","id"]
-    list_filter = ["pushed","date"]
-    search_fields = ["amt","desc"]
-    list_display_links = ["date","amt"]
-
-    actions = ["push_collection","push_collection_static"]
+    model = models.BankCollection
+    show_change_link = False
+    verbose_name_plural = "Collection"
+    form = BankCollectionForm
+    extra = 1 
+    class Media:
+        js = ('admin/js/bank_inline.js',)
+           
+class ChequeDepositAdmin(CustomAdminModel) : 
+ 
+    permissions = [Permission.change,Permission.add]
+    list_display = ["cheque_date","cheque_no","party","amt","bank","deposit_date"]
+    autocomplete_fields = ["party"]
     inlines = [BankCollectionInline]
+    readonly_fields = ["deposit_date"]
+    actions = ['generate_deposit_slip']
+
+    def has_change_permission(self, request, obj=None):
+        if (obj and hasattr(obj,"bank_entry")) and (obj.bank_entry is not None) : 
+            return False 
+        return super().has_change_permission(request, obj)
+    
+    # @admin.action(description="Generate Deposit Slip")
+    # def generate_deposit_slip(self, request, queryset):
+
+
+    #     data = [
+    #         {'S.NO': idx + 1, 'NAME': cheque.party.name, 'BANK': cheque.bank, 'CHEQUE NO': cheque.cheque_no, 'AMOUNT': cheque.amt}
+    #         for idx, cheque in enumerate(queryset)
+    #     ]
+    #     df = pd.DataFrame(data)
+
+    #     response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    #     response['Content-Disposition'] = 'attachment; filename=deposit_slip.xlsx'
+    #     with pd.ExcelWriter(response, engine='xlsxwriter') as writer:
+    #         df.to_excel(writer, index=False, sheet_name='DEPOSIT SLIP')
+
+    #     queryset.update(deposit_date = datetime.date.today())
+    #     return response
+
+
+    @admin.action(description="Generate Deposit Slip")
+    def generate_deposit_slip(self, request, queryset):
+        # Create the deposit slip data
+        data = [
+            {'S.NO': idx + 1, 'NAME': cheque.party.name, 'BANK': cheque.bank, 'CHEQUE NO': cheque.cheque_no, 'AMOUNT': cheque.amt}
+            for idx, cheque in enumerate(queryset)
+        ]
+
+        # Create a new Excel file in memory
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename=deposit_slip.xlsx'
+
+        with pd.ExcelWriter(response, engine='xlsxwriter') as writer:
+            # Convert the cheque data to a DataFrame
+            df = pd.DataFrame(data)
+            
+            # Write the data to the Excel file
+            workbook = writer.book
+            worksheet = workbook.add_worksheet('DEPOSIT SLIP')
+
+            # Formatting options
+            header_format = workbook.add_format({
+                'bold': True,
+                'align': 'center',
+                'valign': 'vcenter',
+                'font_size': 14,
+                'border': 1
+            })
+
+            # Write the header section with merged cells
+            worksheet.merge_range('A1:E1', 'DEPOSIT SLIP', header_format)
+            worksheet.merge_range('A2:E2', 'DEVAKI ENTERPRISES', header_format)
+            worksheet.merge_range('A3:E3', 'A/C NO: 1889223000000030', header_format)
+            worksheet.merge_range('A4:E4', 'PAN NO: AAPFD1365C', header_format)
+            worksheet.merge_range('A5:E5', f'DATE: {datetime.date.today().strftime("%d %b %Y")}', header_format)
+
+            # Start writing the cheque data below the header
+            df_start_row = 5
+
+            # Write column headers
+            for col_num, value in enumerate(df.columns.values):
+                worksheet.write(df_start_row, col_num, value,header_format)
+
+            # Write data rows
+            for row_num, row_data in enumerate(df.values):
+                for col_num, cell_value in enumerate(row_data):
+                    worksheet.write(df_start_row + row_num + 1, col_num, cell_value)
+
+            # Save the worksheet
+            writer.sheets['DEPOSIT SLIP'] = worksheet
+
+        # Update the queryset to set the deposit date
+        queryset.update(deposit_date=datetime.date.today())
+
+        return response
 
     ##Outstanding Bill autocomplete 
     class BillAutocomplete(autocomplete.Select2QuerySetView):
@@ -1226,9 +1319,7 @@ class BankAdmin(CustomAdminModel) :
             if self.q:
                 qs = qs.filter(Q(inum__icontains=self.q) | Q(party__name__icontains=self.q)) 
             return qs
-    
-    custom_views = [("get-outstanding/<str:inum>","get_outstanding"),("billautocomplete",BillAutocomplete.as_view())]
-        
+            
     ##Custom view to support fetch outstanding in inlines 
     def get_outstanding(self,request, inum):
         try:
@@ -1237,115 +1328,127 @@ class BankAdmin(CustomAdminModel) :
         except models.Outstanding.DoesNotExist:
             return JsonResponse({'balance': 0,'party': '-'})
 
+    custom_views = [("get-outstanding/<str:inum>","get_outstanding"),("billautocomplete",BillAutocomplete.as_view())]
 
-    @admin.display(boolean=True)    
-    def saved(self,obj) : 
-        return bool(obj.collection.count() > 0)  
+
+    # @admin.display(boolean=True)    
+    # def saved(self,obj) : 
+    #     return bool(obj.collection.count() > 0)  
       
-    @admin.action(description="Save without Push")
-    def push_collection_static(self, request, queryset) : 
-        queryset.update(pushed = True)
+    # @admin.action(description="Save without Push")
+    # def push_collection_static(self, request, queryset) : 
+    #     queryset.update(pushed = True)
 
-    @admin.action(description="Push Collection")
-    def push_collection(self, request, queryset):
-        queryset = queryset.filter(pushed = False)
-        if not ('confirm_action' in request.POST) :
-            chqs = list(queryset)
-            colls = [ coll for chq in chqs for coll in chq.collection.all() ]
-            if len(colls) == 0 : 
-                messages.warning(request,"No collections present for the selected cheques")
-                return redirect(request.path)
-            value = sum([ coll.amt for coll in colls ])
-            return render_confirmation_page('push_collection_confirmation.html',request,queryset,extra_context={ 
-                        "total_chqs":len(chqs),"total_bills" : len(colls) , "amt" : value , "show_objects" : True , "show_cancel_btn":  True ,
-            })   
-        billing = Billing()
-        coll:pd.DataFrame = billing.download_manual_collection() # type: ignore
-        manual_coll = []
-        bill_chq_pairs = []
-        for bank_obj in queryset.all() : 
-            for coll_obj in bank_obj.collection.all() :
-                bill_no  = coll_obj.bill_id 
-                row = coll[coll["Bill No"] == bill_no].copy()
-                row["Mode"] = ( "Cheque/DD"	if bank_obj.type == "cheque" else "Cheque/DD") ##Warning
-                row["Retailer Bank Name"] = "KVB 650"	
-                row["Chq/DD Date"]  = bank_obj.date.strftime("%d/%m/%Y")
-                row["Chq/DD No"] = chq_no = f"{bank_obj.date.strftime('%d%m')}{bank_obj.idx}".lstrip('0')
-                row["Amount"] = coll_obj.amt
-                manual_coll.append(row)
-                bill_chq_pairs.append((chq_no,bill_no))
+    # @admin.action(description="Push Collection")
+    # def push_collection(self, request, queryset):
+    #     queryset = queryset.filter(pushed = False)
+    #     if not ('confirm_action' in request.POST) :
+    #         chqs = list(queryset)
+    #         colls = [ coll for chq in chqs for coll in chq.collection.all() ]
+    #         if len(colls) == 0 : 
+    #             messages.warning(request,"No collections present for the selected cheques")
+    #             return redirect(request.path)
+    #         value = sum([ coll.amt for coll in colls ])
+    #         return render_confirmation_page('push_collection_confirmation.html',request,queryset,extra_context={ 
+    #                     "total_chqs":len(chqs),"total_bills" : len(colls) , "amt" : value , "show_objects" : True , "show_cancel_btn":  True ,
+    #         })   
+    #     billing = Billing()
+    #     coll:pd.DataFrame = billing.download_manual_collection() # type: ignore
+    #     manual_coll = []
+    #     bill_chq_pairs = []
+    #     for bank_obj in queryset.all() : 
+    #         for coll_obj in bank_obj.collection.all() :
+    #             bill_no  = coll_obj.bill_id 
+    #             row = coll[coll["Bill No"] == bill_no].copy()
+    #             row["Mode"] = ( "Cheque/DD"	if bank_obj.type == "cheque" else "Cheque/DD") ##Warning
+    #             row["Retailer Bank Name"] = "KVB 650"	
+    #             row["Chq/DD Date"]  = bank_obj.date.strftime("%d/%m/%Y")
+    #             row["Chq/DD No"] = chq_no = f"{bank_obj.date.strftime('%d%m')}{bank_obj.idx}".lstrip('0')
+    #             row["Amount"] = coll_obj.amt
+    #             manual_coll.append(row)
+    #             bill_chq_pairs.append((chq_no,bill_no))
 
-        manual_coll = pd.concat(manual_coll)
-        manual_coll["Collection Date"] = datetime.date.today()
-        print("Manual collection :",manual_coll)
+    #     manual_coll = pd.concat(manual_coll)
+    #     manual_coll["Collection Date"] = datetime.date.today()
+    #     print("Manual collection :",manual_coll)
 
-        f = BytesIO()
-        manual_coll.to_excel(f,index=False)
-        f.seek(0)
-        res = billing.upload_manual_collection(f)
+    #     f = BytesIO()
+    #     manual_coll.to_excel(f,index=False)
+    #     f.seek(0)
+    #     res = billing.upload_manual_collection(f)
 
-        print("Upload collection :",pd.read_excel(billing.download_file(res["ul"])).iloc[0] )
+    #     print("Upload collection :",pd.read_excel(billing.download_file(res["ul"])).iloc[0] )
 
-        settle_coll:pd.DataFrame = billing.download_settle_cheque() # type: ignore
-        settle_coll = settle_coll[ settle_coll.apply(lambda row : (str(row["CHEQUE NO"]),row["BILL NO"]) in bill_chq_pairs ,axis=1)].iloc[:1]
-        settle_coll["STATUS"] = "SETTLED"
-        f = BytesIO()
-        settle_coll.to_excel(f,index=False)
-        f.seek(0)
-        res = billing.upload_settle_cheque(f)
-        print("Response collection :",pd.read_excel(billing.download_file(res["ul"])) )
-        queryset.update(pushed = True)
-        sync_reports({"collection" : None})
+    #     settle_coll:pd.DataFrame = billing.download_settle_cheque() # type: ignore
+    #     settle_coll = settle_coll[ settle_coll.apply(lambda row : (str(row["CHEQUE NO"]),row["BILL NO"]) in bill_chq_pairs ,axis=1)].iloc[:1]
+    #     settle_coll["STATUS"] = "SETTLED"
+    #     f = BytesIO()
+    #     settle_coll.to_excel(f,index=False)
+    #     f.seek(0)
+    #     res = billing.upload_settle_cheque(f)
+    #     print("Response collection :",pd.read_excel(billing.download_file(res["ul"])) )
+    #     queryset.update(pushed = True)
+    #     sync_reports({"collection" : None})
 
-    def changelist_view(self, request, extra_context:dict ={}): # type: ignore
+    # def changelist_view(self, request, extra_context:dict ={}): # type: ignore
 
-        class BankStatementUploadForm(forms.Form):
-            bank = forms.ChoiceField(choices=[("sbi","SBI"),("bob","BOB")],initial="sbi")
-            excel_file = forms.FileField(label="Bank Statement Excel")
-            Submit = submit_button("Upload")
-            Action = ""
+    #     class BankStatementUploadForm(forms.Form):
+    #         bank = forms.ChoiceField(choices=[("sbi","SBI"),("bob","BOB")],initial="sbi")
+    #         excel_file = forms.FileField(label="Bank Statement Excel")
+    #         Submit = submit_button("Upload")
+    #         Action = ""
 
-        if request.method == 'GET' :
-            sync_reports({"sales":60*60,"adjustment":60*60,"collection":10*60})
+    #     if request.method == 'GET' :
+    #         sync_reports({"sales":60*60,"adjustment":60*60,"collection":10*60})
 
-        form = BankStatementUploadForm()
-        if request.method == 'POST' and (request.POST.get("action") is None):
-            form = BankStatementUploadForm(request.POST, request.FILES)
-            if form.is_valid():
-                excel_file = request.FILES['excel_file']
-                df = pd.read_csv(excel_file , skiprows=17 , sep="\t")
-                df = df.rename(columns={"Txn Date":"date","Credit":"amt","Ref No./Cheque No.":"ref","Description":"desc"})
-                df = df.iloc[:-1]
-                df["date"] = pd.to_datetime(df["date"],format='%d %b %Y')
-                df["idx"] = df.groupby("date").cumcount() + 1 
-                df = df[["date","ref","desc","amt","idx"]]
-                df["id"] = df["date"].dt.strftime("%d%m%Y") + df['idx'].astype(str)
-                df["date"] = df["date"].dt.date
-                df.amt = df.amt.astype(str).str.replace(",","").apply(lambda x  : float(x.strip()) if x.strip() else 0)
-                df["bank"] = form.cleaned_data["bank"]
-                bulk_raw_insert("bank",df,upsert=True)
-                messages.success(request, "Statement successfully uploaded")
-            else : 
-                messages.error(request, "Statement upload failed")
-        extra_context['form'] = form
+    #     form = BankStatementUploadForm()
+    #     if request.method == 'POST' and (request.POST.get("action") is None):
+    #         form = BankStatementUploadForm(request.POST, request.FILES)
+    #         if form.is_valid():
+    #             excel_file = request.FILES['excel_file']
+    #             df = pd.read_csv(excel_file , skiprows=17 , sep="\t")
+    #             df = df.rename(columns={"Txn Date":"date","Credit":"amt","Ref No./Cheque No.":"ref","Description":"desc"})
+    #             df = df.iloc[:-1]
+    #             df["date"] = pd.to_datetime(df["date"],format='%d %b %Y')
+    #             df["idx"] = df.groupby("date").cumcount() + 1 
+    #             df = df[["date","ref","desc","amt","idx"]]
+    #             df["id"] = df["date"].dt.strftime("%d%m%Y") + df['idx'].astype(str)
+    #             df["date"] = df["date"].dt.date
+    #             df.amt = df.amt.astype(str).str.replace(",","").apply(lambda x  : float(x.strip()) if x.strip() else 0)
+    #             df["bank"] = form.cleaned_data["bank"]
+    #             bulk_raw_insert("bank",df,upsert=True)
+    #             messages.success(request, "Statement successfully uploaded")
+    #         else : 
+    #             messages.error(request, "Statement upload failed")
+    #     extra_context['form'] = form
     
-        return super().changelist_view(request, extra_context=extra_context | {"title" : ""})
+    #     return super().changelist_view(request, extra_context=extra_context | {"title" : ""})
+
+
+    def response_add(self, request, obj, post_url_continue=None):
+        ##Override parent function to prevent chnage success message when the bank collection is not valid 
+        if obj.is_valid : 
+            return super().response_add(request, obj)
+        else : 
+            # return redirect(request.get_full_path())
+            return self.response_post_save_add(request, obj)
 
     def response_change(self, request, obj): # type: ignore
         ##Override parent function to prevent chnage success message when the bank collection is not valid 
         if obj.is_valid : 
             return super().response_change(request, obj)
         else : 
+            # return redirect(request.get_full_path())
             return self.response_post_save_change(request, obj)
 
     def save_model(self, request, obj, form, change):
         obj._save_deferred = True  # Flag to save it later in save_related()
 
-    def save_related(self, request, form, formsets, change):
+    def save_related(self, request, form, formsets , change):
         bank_obj = form.instance 
         total_amt = 0 
         for formset in formsets:
-            if formset.model == models.BankCollection :
+            if formset.model == models.BankCollection  :
                 for inline_form in formset.forms:
                     obj = inline_form.instance
                     is_deleted = inline_form.cleaned_data.get('DELETE')
@@ -1362,6 +1465,178 @@ class BankAdmin(CustomAdminModel) :
             if hasattr(form.instance, '_save_deferred') and form.instance._save_deferred:
               super().save_model(request,bank_obj,form,change)    
         super().save_related(request,form,formsets, change)
+
+class BankStatementAdmin(CustomAdminModel) : 
+
+    change_list_template = "form_and_changelist.html"
+    list_display = ["date","ref","desc","amt","saved"]
+    readonly_fields = ["amt","ref","desc","date","bank","idx","id"]
+    hidden_fields = ["idx","id"]
+    list_filter = ["date"]
+    # search_fields = ["amt","desc"]
+    list_display_links = ["date","amt"]
+    permissions = [Permission.change,Permission.delete]
+    
+    @admin.display(boolean=True)
+    def saved(self,obj) : 
+        return obj.type is not None
+     
+    class NeftCollectionInline(BankCollectionInline) : 
+        verbose_name_plural = "NEFT Collection"
+        def get_queryset(self, request):
+            queryset = super().get_queryset(request)
+            queryset = queryset.filter(cheque_entry__isnull=True)
+            return queryset
+    
+    #Not used (for fuuture uses)
+    class IkeaCollectionInline(admin.TabularInline) : 
+        model = models.Collection
+        verbose_name_plural = "IKEA Pushed Collection"
+    
+    inlines = [NeftCollectionInline]
+
+    def has_change_permission(self, request, obj=None):
+        if obj and (obj.collection.filter(pushed = True).count()) : 
+            return False 
+        return super().has_change_permission(request, obj)
+    
+    def save_model(self, request, obj, form, change):
+        if change:
+            old_obj = models.BankStatement.objects.get(pk=obj.pk)
+
+            if old_obj.type != obj.type : 
+                if old_obj.type == "cheque" :  
+                    models.BankCollection.objects.filter(bank_entry = old_obj).update(bank_entry = None)
+                if old_obj.type == "neft" : 
+                    models.BankCollection.objects.filter(bank_entry = old_obj).delete()
+
+            if obj.type == "cheque" : 
+                models.BankCollection.objects.filter(cheque_entry = obj.cheque_entry).update(bank_entry = obj)
+
+        super().save_model(request, obj, form, change)
+       
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == "cheque_entry":
+            obj_id = request.resolver_match.kwargs.get("object_id")
+            if obj_id:
+                bank_entry = models.BankStatement.objects.get(pk=obj_id)
+                kwargs["queryset"] = models.ChequeDeposit.objects.filter(
+                    amt__gte=bank_entry.amt - 50,
+                    amt__lte=bank_entry.amt + 50
+                ).filter( Q(bank_entry__isnull=True) | Q(bank_entry = bank_entry) )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+    
+    def changelist_view(self, request, extra_context:dict ={}): # type: ignore
+
+        class BankStatementUploadForm(forms.Form):
+            excel_file = forms.FileField(label="Bank Statement Excel")
+            Submit = submit_button("Upload")
+            Action = ""
+
+        # if request.method == 'GET' :
+        #     sync_reports({"sales":60*60,"adjustment":60*60,"collection":10*60})
+
+        form = BankStatementUploadForm()
+        if request.method == 'POST' and (request.POST.get("action") is None):
+            form = BankStatementUploadForm(request.POST, request.FILES)
+            if form.is_valid():
+                excel_file = request.FILES['excel_file']
+                df = pd.read_csv(excel_file , skiprows=17 , sep="\t")
+                df = df.rename(columns={"Txn Date":"date","Credit":"amt","Ref No./Cheque No.":"ref","Description":"desc"})
+                df = df.iloc[:-1]
+                df["date"] = pd.to_datetime(df["date"],format='%d %b %Y')
+                df["idx"] = df.groupby("date").cumcount() + 1 
+                df = df[["date","ref","desc","amt","idx"]]
+                df["id"] = (lambda date, number: ((date.dt.year - 2020) * 12 * 31  + date.dt.month * 31  + date.dt.day) * 100 + number)(df.date,df.idx).astype(str)
+                # df["id"] = df["date"].dt.strftime("%d%m%Y") + df['idx'].astype(str)
+                df["date"] = df["date"].dt.date
+                df.amt = df.amt.astype(str).str.replace(",","").apply(lambda x  : float(x.strip()) if x.strip() else 0)
+                df["bank"] = "SBI"
+                bulk_raw_insert("bankstatement",df,ignore=True)
+                messages.success(request, "Statement successfully uploaded")
+            else : 
+                messages.error(request, "Statement upload failed")
+        extra_context['form'] = form
+        return super().changelist_view(request, extra_context=extra_context | {"title" : ""})
+
+class BankCollectionAdmin(CustomAdminModel) : 
+    list_display = ["bill","party","amt","cheque_no","pushed"]
+    actions = ["push_collection"]
+
+    def party(self,obj) : 
+        return obj.bill.party 
+    
+    def cheque_no(self,obj) :
+        c = obj.cheque_entry 
+        return  c.cheque_no if c else None 
+    
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet:
+        return super().get_queryset(request).filter(bank_entry__isnull = False)
+    
+    @admin.action(description="Push Collection")
+    def push_collection(self, request, queryset):
+
+        queryset = queryset.filter(pushed = False)
+        billing = Billing()
+        coll:pd.DataFrame = billing.download_manual_collection() # type: ignore
+        manual_coll = []
+        bill_chq_pairs = []
+        for coll_obj in queryset.all() : 
+            bank_obj = coll_obj.bank_entry 
+            bill_no  = coll_obj.bill_id 
+            row = coll[coll["Bill No"] == bill_no].copy()
+            row["Mode"] = "Cheque/DD" #("Cheque/DD" if bank_obj.type == "cheque" else "NEFT") ##Warning
+            row["Retailer Bank Name"] = "KVB 650"	
+            row["Chq/DD Date"]  = bank_obj.date.strftime("%d/%m/%Y")
+            chq_no = bank_obj.id 
+            #f"{bank_obj.date.strftime('%d%m')}{bank_obj.idx}".lstrip('0')
+            # if bank_obj.type == "cheque" : 
+            #     chq_no = f"{bank_obj.date.strftime('%d%m')}{bank_obj.idx}".lstrip('0')
+            # if bank_obj.type == "neft" : 
+            #     chq_no = f"{bank_obj.date.strftime('%d%m')}{bank_obj.idx}" + bill_no 
+            row["Chq/DD No"] = chq_no
+            row["Amount"] = coll_obj.amt
+            manual_coll.append(row)
+            bill_chq_pairs.append((chq_no,bill_no))
+
+        manual_coll = pd.concat(manual_coll)
+        manual_coll["Collection Date"] = datetime.date.today()
+        print("Manual collection :",manual_coll)
+
+        f = BytesIO()
+        manual_coll.to_excel(f,index=False)
+        f.seek(0)
+        res = billing.upload_manual_collection(f)
+
+        x = pd.read_excel(billing.download_file(res["ul"]))
+        x.to_excel("b.xlsx")
+        print("Upload collection :", x.iloc[0] )
+
+        settle_coll:pd.DataFrame = billing.download_settle_cheque() # type: ignore
+        settle_coll = settle_coll[ settle_coll.apply(lambda row : (str(row["CHEQUE NO"]),row["BILL NO"]) in bill_chq_pairs ,axis=1) ]
+        settle_coll["STATUS"] = "SETTLED"
+        f = BytesIO()
+        settle_coll.to_excel(f,index=False)
+        f.seek(0)
+        res = billing.upload_settle_cheque(f)
+        print( res , res["ul"])
+
+        bytes_io = billing.download_file(res["ul"])
+        x = pd.read_excel(bytes_io)
+        x.to_excel("a.xlsx")
+        print("Response collection :", x)
+        queryset.update(pushed = True)
+        sync_reports({"collection" : None})
+
+        bytes_io.seek(0)
+        response = HttpResponse(bytes_io, content_type='application/vnd.ms-excel')
+        response['Content-Disposition'] = 'attachment; filename="' + f"Uploaded Collection.xlsx" + '"'
+        return response 
+                                
+    def changelist_view(self, request: HttpRequest, extra_context = {}) -> TemplateResponse:
+        return super().changelist_view(request, {"title" : "Push Pending Collection to IKEA"} | extra_context)
+    
 
 ProcessStatus = IntEnum("ProcessStatus",(("NotStarted",0),("Success",1),("Started",2),("Failed",3)))
 
@@ -1608,9 +1883,13 @@ class MyAdminSite(admin.AdminSite):
             },
             "Collection": {
                 "Outstanding": reverse("admin:app_outstanding_changelist"),
-                "Cheque": reverse("admin:app_bank_changelist"),
                 "Salesman Cheque": query_url("admin:app_salesmancollection_changelist" , {"time":"Today"}),
                 "Pending Sheet": query_url("admin:app_salesmanpendingsheet_changelist" , {"date":"Today"}),
+            },
+            "Cheque" : {
+                "Cheque Deposit": reverse("admin:app_chequedeposit_changelist"),
+                "Bank Statement": reverse("admin:app_bankstatement_changelist"),
+                "Push To Ikea" : query_url("admin:app_bankcollection_changelist" , {"pushed":False})
             },
             "Others": {
                 "Beat Export": reverse("admin:app_basepackprocessstatus_changelist"),
@@ -1693,11 +1972,16 @@ class TodayIn(TodayOut) :
 admin_site = MyAdminSite(name='myadmin')
 admin_site.has_permission = lambda r: setattr(r, 'user', AccessUser()) or True # type: ignore
 
+admin_site.register(models.Party,PartyAdmin)
+
 admin_site.register(models.Orders,BillingAdmin)
 admin_site.register(models.Outstanding,OutstandingAdmin)
-admin_site.register(models.Bank,BankAdmin)
-admin_site.register(models.SalesmanCollection,SalesCollectionAdmin)
 
+admin_site.register(models.ChequeDeposit,ChequeDepositAdmin)
+admin_site.register(models.BankStatement,BankStatementAdmin)
+admin_site.register(models.BankCollection,BankCollectionAdmin)
+
+admin_site.register(models.SalesmanCollection,SalesCollectionAdmin)
 
 admin_site.register(models.Bill,PrintAdmin)
 admin_site.register(models.RetailPrint,RetailPrintAdmin)
@@ -1714,5 +1998,6 @@ admin_site.register(models.Settings,SettingsAdmin)
 
 admin_site.register(models.TodayBillOut,TodayOut)
 admin_site.register(models.TodayBillIn,TodayIn)
+
 
 # admin_site.register(models.Eway,EwayAdmin)

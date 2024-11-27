@@ -169,9 +169,11 @@ class Sales( PartyVoucher,GstVoucher ) :
 
 
 class Collection( PartyVoucher ) : 
+      
       bill = ForeignKey("app.Sales",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING)
       mode = CharField(max_length=30)
-      columns = ["inum","date","amt"] + ["bill_id","mode","party_id"]
+      bank_entry = ForeignKey("app.BankStatement",related_name="ikea_collection",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING,null=True,blank=True)
+      columns = ["inum","date","amt"] + ["bill_id","mode","party_id","bank_entry_id"]
 
       @property
       def Mode(self) : return (self.mode or "").upper()
@@ -319,7 +321,40 @@ class Vehicle(models.Model) :
 
 
 ## Collection Models
-class Bank(models.Model) : 
+
+class ChequeDeposit(models.Model) :
+    BANK_CHOICES = [
+        ('SBI', 'State Bank of India'),
+        ('KVB', 'Karur Vysya Bank'),
+        ('HDFC', 'HDFC Bank'),
+        ('ICICI', 'ICICI Bank'),
+        ('IB', 'Indian Bank'),
+        ('PNB', 'Punjab National Bank'),
+        ('BOB', 'Bank of Baroda'),
+        ('UBI', 'Union Bank of India'),
+        ('CANARA', 'Canara Bank'),
+        ('AXIS', 'Axis Bank')
+    ]
+    party = ForeignKey("app.Party",on_delete=models.DO_NOTHING,null=True)
+    bank = models.CharField(max_length=100, choices=BANK_CHOICES)
+    cheque_no = models.CharField(max_length=20)
+    amt = models.FloatField()
+    cheque_date = models.DateField()
+    deposit_date = models.DateField(null=True,blank=True)
+    entry_date = models.DateField(auto_now_add=True)
+    def __str__(self) -> str:
+         return f"CHQ: {self.cheque_no} - AMT: {self.amt} - {self.party.name}"
+
+class BankCollection(models.Model) : 
+      bill = ForeignKey("app.Outstanding",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING)
+      cheque_entry = ForeignKey("app.ChequeDeposit",related_name="collection",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING,null=True,blank=True)
+      bank_entry = ForeignKey("app.BankStatement",related_name="collection",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING,null=True,blank=True)
+      amt = models.IntegerField()
+      pushed = models.BooleanField(db_default=False,default=False)
+      class Meta:
+          unique_together = ('bill', 'cheque_entry', 'bank_entry')
+
+class BankStatement(models.Model) : 
     date = models.DateField()
     idx = models.IntegerField()
     id = models.CharField(max_length=15,primary_key=True)
@@ -327,20 +362,15 @@ class Bank(models.Model) :
     desc = models.TextField(max_length=200)
     amt = models.IntegerField()
     bank = models.TextField(max_length=20)
-    type = models.TextField(max_length=15,choices=(("cheque","Cheque"),("neft","NEFT"),("cash","Cash Deposit"),("others","Others")),null=True)
-    pushed = models.BooleanField(db_default=False,default=False)
+    type = models.TextField(max_length=15,choices=(("cheque","Cheque"),("neft","NEFT"),("upi","UPI (IKEA)"),("cash","Cash Deposit"),("others","Others")),null=True)
+    cheque_entry = models.OneToOneField("app.ChequeDeposit", on_delete=models.DO_NOTHING, null=True, blank=True, related_name='bank_entry')
+
     class Meta : 
         unique_together = ('date','idx','bank')
         verbose_name_plural = 'Bank'
 
-class BankCollection(models.Model) : 
-      bill = ForeignKey("app.Outstanding",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING)
-      cheque = ForeignKey("app.Bank",related_name="collection",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING)
-      amt = models.IntegerField()
-      entry_date = models.DateField(auto_now_add=True)
-      coll_code = models.TextField(max_length=30,null=True,blank=True)
-      class Meta:
-          unique_together = ('bill', 'cheque')
+
+
 
 class SalesmanCollectionBill(models.Model) : 
     id = models.CharField(max_length=25,primary_key=True)

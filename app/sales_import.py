@@ -128,7 +128,12 @@ def CollectionInsert(coll) :
    coll = coll.rename(columns=coll_map)
    coll = coll.dropna(subset="inum")
    coll["date"] = pd.to_datetime(coll.date,dayfirst=True).dt.date
-   coll = coll[coll.Status != "CAN"]    
+   coll = coll[coll.Status != "CAN"]
+
+   coll["bank_entry_id"] = None 
+   is_auto_pushed_chq = (coll.Status == "CHQ") & (coll["Collection Settlement Mode"] == "Excel Collection")
+   coll.loc[ is_auto_pushed_chq , "bank_entry_id" ] = coll.loc[ is_auto_pushed_chq , "Cheque No" ].astype(str).str.split(".").str[0]
+
    coll["mode"] = coll.Status.replace({"CSH":"Cash"} | { k : "Bank" for k in ["CHQ","NEFT","RTGS","UPI","IMPS"] })
    coll["party_id"] = None
    ledger_insert("collection",coll[ models.Collection.columns ])
