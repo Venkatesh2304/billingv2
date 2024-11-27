@@ -1075,7 +1075,7 @@ class PrintAdmin(CustomAdminModel) :
             """
             undo_url = reverse("admin:undo_print") + f"?inums={','.join(bills)}" + f"&next={quote(str(request.get_full_path()))}"
             undo_link = hyperlink(undo_url,"Printed By Mistake?",style="text-decoration:underline;color:blue;margin-left:5px;",new_tab=False) 
-            link = hyperlink(f"/static/bill",f"{bills[0]} - {bills[-1]}",style="text-decoration:underline;color:blue;") 
+            link = hyperlink(f"/static/bill.pdf",f"{bills[0]} - {bills[-1]}",style="text-decoration:underline;color:blue;") 
             messages.success(request, mark_safe(code + f"Successfully printed {link}: {undo_link}"))
             return 
 
@@ -1225,7 +1225,7 @@ class BankCollectionInline(admin.TabularInline) :
            
 class ChequeDepositAdmin(CustomAdminModel) : 
  
-    permissions = [Permission.change,Permission.add]
+    permissions = [Permission.change,Permission.add,Permission.delete]
     list_display = ["cheque_date","cheque_no","party","amt","bank","deposit_date"]
     autocomplete_fields = ["party"]
     inlines = [BankCollectionInline]
@@ -1237,25 +1237,9 @@ class ChequeDepositAdmin(CustomAdminModel) :
             return False 
         return super().has_change_permission(request, obj)
     
-    # @admin.action(description="Generate Deposit Slip")
-    # def generate_deposit_slip(self, request, queryset):
-
-
-    #     data = [
-    #         {'S.NO': idx + 1, 'NAME': cheque.party.name, 'BANK': cheque.bank, 'CHEQUE NO': cheque.cheque_no, 'AMOUNT': cheque.amt}
-    #         for idx, cheque in enumerate(queryset)
-    #     ]
-    #     df = pd.DataFrame(data)
-
-    #     response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    #     response['Content-Disposition'] = 'attachment; filename=deposit_slip.xlsx'
-    #     with pd.ExcelWriter(response, engine='xlsxwriter') as writer:
-    #         df.to_excel(writer, index=False, sheet_name='DEPOSIT SLIP')
-
-    #     queryset.update(deposit_date = datetime.date.today())
-    #     return response
-
-
+    def has_delete_permission(self, request, obj=None):
+        return self.has_change_permission(request, obj)
+    
     @admin.action(description="Generate Deposit Slip")
     def generate_deposit_slip(self, request, queryset):
         # Create the deposit slip data
@@ -1500,6 +1484,9 @@ class BankStatementAdmin(CustomAdminModel) :
             return False 
         return super().has_change_permission(request, obj)
     
+    def has_delete_permission(self, request, obj=None):
+        return self.has_change_permission(request, obj)
+    
     def save_model(self, request, obj, form, change):
         if change:
             old_obj = models.BankStatement.objects.get(pk=obj.pk)
@@ -1560,8 +1547,16 @@ class BankStatementAdmin(CustomAdminModel) :
         return super().changelist_view(request, extra_context=extra_context | {"title" : ""})
 
 class BankCollectionAdmin(CustomAdminModel) : 
+
     list_display = ["bill","party","amt","cheque_no","pushed"]
+    permissions = [Permission.delete]
     actions = ["push_collection"]
+    
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if 'delete_selected' in actions:
+            del actions['delete_selected']
+        return actions
 
     def party(self,obj) : 
         return obj.bill.party 
@@ -1571,8 +1566,8 @@ class BankCollectionAdmin(CustomAdminModel) :
         return  c.cheque_no if c else None 
     
 
-    def get_queryset(self, request: HttpRequest) -> QuerySet:
-        return super().get_queryset(request).filter(bank_entry__isnull = False)
+    # def get_queryset(self, request: HttpRequest) -> QuerySet:
+    #     return super().get_queryset(request).filter(bank_entry__isnull = False)
     
     @admin.action(description="Push Collection")
     def push_collection(self, request, queryset):

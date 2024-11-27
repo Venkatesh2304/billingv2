@@ -347,8 +347,8 @@ class ChequeDeposit(models.Model) :
 
 class BankCollection(models.Model) : 
       bill = ForeignKey("app.Outstanding",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING)
-      cheque_entry = ForeignKey("app.ChequeDeposit",related_name="collection",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING,null=True,blank=True)
-      bank_entry = ForeignKey("app.BankStatement",related_name="collection",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING,null=True,blank=True)
+      cheque_entry = ForeignKey("app.ChequeDeposit",related_name="collection",db_index=False,db_constraint=False,on_delete=models.CASCADE,null=True,blank=True)
+      bank_entry = ForeignKey("app.BankStatement",related_name="collection",db_index=False,db_constraint=False,on_delete=models.CASCADE,null=True,blank=True)
       amt = models.IntegerField()
       pushed = models.BooleanField(db_default=False,default=False)
       class Meta:
