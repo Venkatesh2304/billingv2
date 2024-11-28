@@ -24,7 +24,6 @@ import traceback
 from typing import Any, Dict, Optional, Type
 from django import forms
 from django.contrib import admin
-
 from django.contrib.admin.views.main import ChangeList
 from django.core.handlers.wsgi import WSGIRequest
 from django.db.models.base import Model
@@ -65,6 +64,7 @@ import os
 from requests.exceptions import JSONDecodeError
 from django.http import JsonResponse
 from urllib.parse import quote, unquote
+# from django_admin_multi_select_filter.filters import MultiSelectFieldListFilter,MultiSelectRelatedFieldListFilter
 
 
 class PrintType(Enum):
@@ -117,7 +117,7 @@ def result_list_tag(parser, token):
 
 def create_simple_admin_list_filter(title_name,paramter,lookups: dict[str,Callable] = {}) :
 
-    class CustomListFilter(admin.SimpleListFilter):
+    class CustomListFilter(admin.SimpleListFilter) : #admin.SimpleListFilter):
         title = title_name
         parameter_name = paramter
         
@@ -832,12 +832,19 @@ class PrintAdmin(CustomAdminModel) :
             return parties 
 
     @admin.display(boolean=True)
-    def delivered(obj):
+    def delivered(obj): 
         return obj.bill.delivered
+    
+    def s(self,obj) :
+        if obj.loading_sheet is None : return "-"
+        return obj.loading_sheet.party 
+    
+    def t(self,obj): 
+        return obj.delivered_time  
     
     permissions = [Permission.change]
     change_list_template = "form_and_changelist.html"
-    list_display = ["bill","party","salesman","print_type","print_time","einvoice","amount",delivered,"vehicle"]#,"einvoice","ctin"]
+    list_display = ["bill","party","salesman","print_type","print_time","einvoice","amount",delivered,"vehicle","s","t"]#,"einvoice","ctin"]
     ordering = ["bill"]
     actions = ["both_copy","loading_sheet_salesman","loading_sheet","first_copy","double_first_copy","second_copy","printed_by_mistake",
                "add_to_loading_sheet","remove_from_loading_sheet"]
@@ -1092,8 +1099,11 @@ class PrintAdmin(CustomAdminModel) :
         return queryset.update(plain_loading_sheet = False)
 
     @admin.action(description="Reload Bill")
-    def printed_by_mistake(self, request, queryset):
-        return queryset.update(print_time = None,is_reloaded = True)
+    def printed_by_mistake(self, request, qs):
+        loading_sheets = list(qs.values_list("loading_sheet",flat=True).distinct())
+        qs.update(print_time=None,loading_sheet=None,is_reloaded = True)
+        models.SalesmanLoadingSheet.objects.filter(inum__in = loading_sheets).delete()
+        return qs.update(print_time = None,is_reloaded = True)
 
     @admin.action(description="Both Copy")
     def both_copy(self, request, queryset):
@@ -1143,9 +1153,7 @@ class PrintAdmin(CustomAdminModel) :
             confirm_undo = bool(request.GET.get("confirm") == "true")
             if confirm_undo : 
                 qs = models.Bill.objects.filter(bill_id__in=id_list)
-                loading_sheets = list(qs.values_list("loading_sheet",flat=True).distinct())
-                qs.update(print_time=None,loading_sheet=None,is_reloaded = True)
-                models.SalesmanLoadingSheet.objects.filter(inum__in = loading_sheets).delete()
+                self.printed_by_mistake(request,qs)
             return redirect(redirect_url)
         else :
             response_text = f"Are you sure that you have printed by mistake for the bills from {id_list[0]} to {id_list[-1]}?"
@@ -1172,7 +1180,7 @@ class WholeSalePrintAdmin(PrintAdmin) :
 
 
 class BillDeliveryAdmin(CustomAdminModel) : 
-    list_display = ["bill_id","party","vehicle_id","loading_time","delivered","delivered_time","is_loading_sheet"]
+    list_display = ["bill_id","party","vehicle_id","loading_time","delivered","delivered_time","is_loading_sheet","bill_date"]
     list_filter = ["vehicle_id","loading_time","delivered_time",
                    create_simple_admin_list_filter("Beat","beat",{
                        "RETAIL" : lambda qs : qs.exclude(bill__beat__contains = "WHOLESALE") ,
@@ -1181,6 +1189,9 @@ class BillDeliveryAdmin(CustomAdminModel) :
     
     ordering = ("bill_id",)
     search_fields = ("bill","vehicle_id")
+    
+    def bill_date(self,obj) : 
+        return obj.bill.date 
     
     def party(self,obj) : 
         return obj.bill.party.name
