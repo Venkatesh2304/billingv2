@@ -31,7 +31,7 @@ pd.options.display.float_format = '{:.2f}'.format
 # exit(0)
 from app.models import Orders,OrderProducts
 cur = connection.cursor()
-cur.execute("update app_bill set loading_sheet = NULL where loading_sheet = 'SMA59361'")
+cur.execute("update app_bill set loading_sheet_id = NULL where loading_sheet_id = 'SMA59361'")
 cur.execute("DELETE from app_salesmanloadingsheet where inum = 'SMA59361'")
 ds
 # cur.execute("DELETE from app_bankstatement")
