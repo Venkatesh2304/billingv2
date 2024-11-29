@@ -13,7 +13,7 @@ from app.sales_import import AdjustmentInsert, PartyInsert,CollectionInsert, Sal
 from custom.Session import client
 from django.db import connection 
 
-verified_today_sync = False 
+last_verified_sync = datetime.date(1990,1,1) 
 
 def sync_beat_parties_ikea(force = False) :
     today = datetime.date.today() if not force else (datetime.date.today() + datetime.timedelta(days=1))
@@ -36,11 +36,11 @@ class AdminProcessingMiddleware(MiddlewareMixin):
             sync_reports(limits={ "collection" : None },min_days_to_sync={"collection" : 30})
             return JsonResponse({"Collection Synced for last 30 days"})
         
-        global verified_today_sync
-        if verified_today_sync : return
+        global last_verified_sync
+        if last_verified_sync == datetime.date.today() : return
         urls = ["outstanding","orders","bank"]
         for url in urls : 
             if url in request.path : 
                sync_beat_parties_ikea()
-               verified_today_sync = True  
+               last_verified_sync = datetime.date.today()
         
