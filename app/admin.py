@@ -827,7 +827,10 @@ class PrintAdmin(CustomAdminModel) :
 
     class PartyAutocomplete(autocomplete.Select2ListView):
         def get_list(self): 
-            parties = models.Sales.objects.filter(date__gte = datetime.date.today() - datetime.timedelta(weeks=16)).annotate(
+            qs = models.Sales.objects.filter(date__gte = datetime.date.today() - datetime.timedelta(weeks=16))
+            beat = self.forwarded.get('beat', None)
+            if beat : qs = qs.filter(beat = beat)
+            parties = qs.annotate(
                 keyword = Concat('party__name', Value(' ('), 'party__master_code', Value(')') , output_field=CharField())
             ).values_list("keyword",flat=True).distinct() #warning
             return parties 
@@ -1033,7 +1036,6 @@ class PrintAdmin(CustomAdminModel) :
         if 'update_fields' in config:
             queryset.update(**config['update_fields'](context), print_time=datetime.datetime.now())
                 
-      
     def base_print_action(self, request, queryset, print_types):
         queryset = queryset.filter(bill__delivered = True)
         
@@ -1126,17 +1128,18 @@ class PrintAdmin(CustomAdminModel) :
     def loading_sheet_salesman(self, request, queryset):
 
         class SalesmanLoadingSheetForm(forms.Form):
+            beat = forms.CharField(required=False,disabled=True,initial=queryset.first().bill.beat)
             party_name = forms.ModelChoiceField(required=False,queryset=models.Party.objects.none(),
-                                widget=autocomplete.ModelSelect2(url='admin:print_party_autocomplete'),
-                                label="Party Name" )
+                                widget=autocomplete.ModelSelect2(url='admin:print_party_autocomplete',forward=['beat']),
+                                label="Party Name")
             Submit = submit_button("Print")
-            Cancel = submit_button("Cancel")
             Action = ""
         
         if "confirm_action" in request.POST : 
             return self.base_print_action(request, queryset, [PrintType.LOADING_SHEET_SALESMAN])
         else  :
-            return render_confirmation_page("admin/base_custom_confirmation.html",request,queryset,extra_context={"form" : SalesmanLoadingSheetForm()})
+            return render_confirmation_page("salesman_loadingsheet.html",request,queryset,
+                                            extra_context={"form" : SalesmanLoadingSheetForm(), "show_cancel_btn" : True})
 
     @admin.action(description="Plain Loading Sheet")
     def loading_sheet(self, request, queryset):

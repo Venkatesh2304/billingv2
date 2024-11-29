@@ -1,0 +1,69 @@
+
+{% extends "admin/base_custom_confirmation.html" %}
+{% block form %}
+<style> 
+  #cancel_btn { background:  red ;}
+  #id_Submit { background:  green ;}
+</style>
+{{ block.super }}
+
+<table style="margin: 20px;"> 
+  <thead>
+    <tr>
+      <th>Inum</th>
+      <th>Balance</th>
+      <th>Days</th>
+      <th>Beat</th>
+    </tr>
+  </thead>  
+  <tbody>
+  </table>
+  <script>
+
+  document.querySelector('[name="party_name"]').onchange =  (e) => {
+    var party = e.target.value;
+    
+    if (party.includes("(")) {
+      party = party.split("(")
+      party = party[party.length -1].split(")")[0];
+    } else { 
+      return ; 
+    }
+
+    var beat = document.querySelector('[name="beat"]').value;
+
+    fetch(`/get_party_outstanding?party=${party}&beat=${beat}`)
+      .then(response => response.json())
+      .then(data => {
+        var tbody = document.querySelector('tbody');
+        tbody.innerHTML = ''; // Clear existing rows
+
+        data.forEach(item => {
+          var row = document.createElement('tr');
+
+          var inumCell = document.createElement('td');
+          inumCell.textContent = item.inum;
+          row.appendChild(inumCell);
+
+          var balanceCell = document.createElement('td');
+          balanceCell.textContent = item.balance;
+          row.appendChild(balanceCell);
+
+          var daysCell = document.createElement('td');
+          daysCell.textContent = item.days;
+          row.appendChild(daysCell);
+
+          var beatCell = document.createElement('td');
+          beatCell.textContent = item.beat;
+          row.appendChild(beatCell);
+
+          tbody.appendChild(row);
+        });
+      })
+      .catch(error => console.error('Error:', error));
+    }
+</script>
+
+{% endblock %}
+
+      

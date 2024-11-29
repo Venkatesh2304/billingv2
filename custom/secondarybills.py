@@ -93,7 +93,7 @@ def collection(file,document,barcode_generator) :
     except : 
        lines=23
 
-    lines = 14
+    lines = 18
     f.close()
     if i%2 == 0:
      document.add_paragraph('\n'*lines) 

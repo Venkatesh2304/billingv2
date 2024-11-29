@@ -165,7 +165,7 @@ def get_party_outstanding(request):
     beat = request.GET.get('beat',None)
     qs = models.Outstanding.objects.filter(party_id = party).filter(balance__lte = -1)
     if beat : qs = qs.filter(beat = beat)
-    return JsonResponse([{ "inum" : i.inum, "balance" : i.balance, "days" : (datetime.date.today() - i.date).days , "beat" : i.beat }  for i in qs.all() ],
+    return JsonResponse([{ "inum" : i.inum, "balance" : abs(i.balance), "days" : (datetime.date.today() - i.date).days , "beat" : i.beat }  for i in qs.all() ],
                         safe=False)
 
 
