@@ -31,7 +31,7 @@
     }
 
     var beat = document.querySelector('[name="beat"]').value;
-    //&beat=F+H-M.K.KOTTAI%203S
+    //&beat=${beat}
     fetch(`/get_party_outstanding?party=${party}`)
       .then(response => response.json())
       .then(data => {

@@ -39,8 +39,9 @@ cur = connection.cursor()
 # fdg
 
 print( pd.read_sql(f"select * from app_party where name like '%BALAJI 1-D%'",connection)  )
-print( pd.read_sql(f"select * from app_bill where bill_id = 'A52834'",connection)  )
-print( pd.read_sql(f"select * from app_bill where bill_id = 'A57964'",connection)  )
+print( pd.read_sql(f"select * from app_bill where bill_id = 'A58744'",connection)  )
+print( pd.read_sql(f"select * from app_sales where inum = 'A58744'",connection)  )
+print( pd.read_sql(f"select * from app_sales order by date desc  limit 1",connection)  )
 sdf 
 print( pd.read_sql(f"select * from app_orderproducts where order_id = '20SMN00014P1600020241121'",connection)  )
 # 90SMN00014P1600020241121
