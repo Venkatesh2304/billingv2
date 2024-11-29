@@ -37,8 +37,11 @@ cur = connection.cursor()
 # cur.execute("DELETE from app_bankstatement")
 # cur.execute("DELETE from app_chequedeposit")
 # fdg
+print( pd.read_sql(f"""select salesman_name as user , (select name from app_party where party_id = code) as party , inum as bill_no , -balance as amount  
+              from app_outstanding left outer join app_beat on app_outstanding.beat = app_beat.name
+              where  balance <= -1 and days like '%friday%' """ ,connection) )
 
-print( pd.read_sql(f"select * from app_party where name like '%BALAJI 1-D%'",connection)  )
+print( pd.read_sql(f"select * from app_beat where salesman_name = 'VELAN SENTHIL KUMAR'",connection)  )
 print( pd.read_sql(f"select * from app_bill where bill_id = 'A58744'",connection)  )
 print( pd.read_sql(f"select * from app_sales where inum = 'A58744'",connection)  )
 print( pd.read_sql(f"select * from app_sales order by date desc  limit 1",connection)  )
