@@ -160,6 +160,16 @@ def get_bill_data(request):
 
     return redirect("vehicle_selection")
 
+def get_party_outstanding(request):
+    party = request.GET.get('party')
+    beat = request.GET.get('beat',None)
+    qs = models.Outstanding.objects.filter(party_id = party).filter(balance__lte = -1)
+    if beat : qs = qs.filter(beat = beat)
+    return JsonResponse([{ "inum" : i.inum, "balance" : i.balance, "days" : (datetime.date.today() - i.date).days , "beat" : i.beat }  for i in qs.all() ],
+                        safe=False)
+
+
+
 def update(request) : 
     os.system("git stash && git pull --ff && pip install -r requirements.txt && python manage.py migrate")
     return JsonResponse("Done")

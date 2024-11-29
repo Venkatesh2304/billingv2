@@ -64,8 +64,9 @@ import os
 from requests.exceptions import JSONDecodeError
 from django.http import JsonResponse
 from urllib.parse import quote, unquote
-# from django_admin_multi_select_filter.filters import MultiSelectFieldListFilter,MultiSelectRelatedFieldListFilter
-
+# from django_admin_multi_selecfrom django.db.models.functions import Concat
+from django.db.models import CharField, Value
+from django.db.models.functions import Concat
 
 class PrintType(Enum):
     FIRST_COPY = "first_copy"
@@ -716,7 +717,6 @@ class OutstandingAdmin(CustomAdminModel) :
 
     change_list_template = "form_and_changelist.html"
     list_display = ["inum","party","beat","balance","phone","days"]
-    today = datetime.date.today()
     ordering = ["date"]
     search_fields = ["party__name","beat"]
     days_filter = { f'>= {no_of_days} days': functools.partial(lambda no_of_days,qs: qs.filter(date__lte=datetime.date.today() - datetime.timedelta(days=no_of_days)) 
@@ -735,7 +735,7 @@ class OutstandingAdmin(CustomAdminModel) :
         return obj.party.phone
     
     def days(self,obj) : 
-        return (self.today - obj.date).days
+        return (datetime.date.today() - obj.date).days
     
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return super().get_queryset(request).filter(balance__lte = -1)
@@ -826,9 +826,10 @@ def create_admin_form_filter(title,form) :
 class PrintAdmin(CustomAdminModel) :
 
     class PartyAutocomplete(autocomplete.Select2ListView):
-        def get_list(self):
-            parties = models.Sales.objects.filter(date__gte = datetime.date.today() - datetime.timedelta(weeks=16) , 
-                                                   party__name__istartswith=self.q).values_list("party__name",flat=True).distinct() #warning
+        def get_list(self): 
+            parties = models.Sales.objects.filter(date__gte = datetime.date.today() - datetime.timedelta(weeks=16)).annotate(
+                keyword = Concat('party__name', Value(' ('), 'party__master_code', Value(')') , output_field=CharField())
+            ).values_list("keyword",flat=True).distinct() #warning
             return parties 
 
     @admin.display(boolean=True)
@@ -1129,6 +1130,7 @@ class PrintAdmin(CustomAdminModel) :
                                 widget=autocomplete.ModelSelect2(url='admin:print_party_autocomplete'),
                                 label="Party Name" )
             Submit = submit_button("Print")
+            Cancel = submit_button("Cancel")
             Action = ""
         
         if "confirm_action" in request.POST : 
@@ -1654,10 +1656,9 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
     process_logs = []
     process_names = ["current_stock","basepack_download","basepack_upload","beat_export","order_sync"]
                 
-    today = datetime.date.today() 
 
     def current_stock(self,ikea,form) : 
-        stock = ikea.current_stock(self.today)
+        stock = ikea.current_stock(datetime.date.today() )
         print( stock )
         stock = stock[stock.Location == "MAIN GODOWN"]
         self.active_basepack_codes = list(set(stock["Basepack Code"].dropna().astype(int))  )
@@ -1709,7 +1710,8 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
 
     def beat_export(self,ikea,form) : 
         ##Start Beat Export and Order Sync after basepack uploaded
-        export_data = { "fromDate": str(self.today) ,"toDate": str(form.cleaned_data["date"]) }
+        today = datetime.date.today() 
+        export_data = { "fromDate": str(today) ,"toDate": str(form.cleaned_data["date"]) }
         ikea.post("/rsunify/app/quantumExport/checkBeatLink",
                 data = {'exportData': json.dumps(export_data) })
         ikea.post("/rsunify/app/sfmIkeaIntegration/callSfmIkeaIntegrationSync")
@@ -1742,10 +1744,11 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
             self.run_processes(processes)
                     
     def changelist_view(self, request: HttpRequest, extra_context:dict = {}) -> TemplateResponse: # type: ignore
+        today = datetime.date.today()
 
         def get_default_beat_export_date() :
             days = 6 
-            return  (self.today + datetime.timedelta(days=days)) if (self.today.day <= (20 - days)) or (self.today.day > 20) else self.today.replace(day=20)
+            return  (today + datetime.timedelta(days=days)) if (today.day <= (20 - days)) or (today.day > 20) else today.replace(day=20)
         
         class BasepackForm(forms.Form) : 
             date = forms.DateField(required=False,initial=get_default_beat_export_date(),
@@ -1762,7 +1765,7 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
                     with open("basepack.xlsx","rb") as f : 
                         bytes = f.read()
                     response = HttpResponse(bytes, content_type='application/vnd.ms-excel')
-                    response['Content-Disposition'] = 'attachment; filename="' + f"basepack_{self.today}.xlsx" + '"'
+                    response['Content-Disposition'] = 'attachment; filename="' + f"basepack_{today}.xlsx" + '"'
                     return response 
                                 
                 if not self.basepack_lock.locked() : 

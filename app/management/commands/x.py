@@ -31,17 +31,17 @@ pd.options.display.float_format = '{:.2f}'.format
 # exit(0)
 from app.models import Orders,OrderProducts
 cur = connection.cursor()
-cur.execute("update app_bill set loading_sheet_id = NULL where loading_sheet_id = 'SMA59361'")
-cur.execute("DELETE from app_salesmanloadingsheet where inum = 'SMA59361'")
-ds
+# cur.execute("update app_bill set loading_sheet_id = NULL where loading_sheet_id = 'SMA59361'")
+# cur.execute("DELETE from app_salesmanloadingsheet where inum = 'SMA59361'")
+# ds
 # cur.execute("DELETE from app_bankstatement")
 # cur.execute("DELETE from app_chequedeposit")
 # fdg
 
-print( pd.read_sql(f"select * from app_salesmanloadingsheet where inum = 'SMA59361'",connection)  )
+print( pd.read_sql(f"select * from app_party where name like '%BALAJI 1-D%'",connection)  )
 print( pd.read_sql(f"select * from app_bill where bill_id = 'A52834'",connection)  )
 print( pd.read_sql(f"select * from app_bill where bill_id = 'A57964'",connection)  )
-sdf
+sdf 
 print( pd.read_sql(f"select * from app_orderproducts where order_id = '20SMN00014P1600020241121'",connection)  )
 # 90SMN00014P1600020241121
 
