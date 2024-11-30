@@ -528,7 +528,18 @@ class BaseProcessStatusAdmin(CustomAdminModel) :
 #Dummy Admins 
 class PartyAdmin(CustomAdminModel) : 
     search_fields = ["name"]
-    ordering = ["name"]            
+    ordering = ["name"] 
+    class OutstandingInline(admin.TabularInline) : 
+        model = models.Outstanding
+        def get_queryset(self,request) : 
+            return super().get_queryset(request).filter(balance__lte = -1)
+
+    inlines = [OutstandingInline]
+    def get_queryset(self,request) :
+        parties = models.Sales.objects.filter(date__gte = datetime.date.today() - datetime.timedelta(weeks=16)).values_list("party_id",flat=True)
+        return super().get_queryset(request).filter(code__in = parties)
+
+
 
 ## Billing Admin
 class BillingAdmin(BaseOrderAdmin) :   
@@ -1222,7 +1233,7 @@ class BankCollectionInline(admin.TabularInline) :
             fields = ["bill","party","balance","amt"]
             widgets = {
                 'bill': dal.autocomplete.ModelSelect2(url='/app/chequedeposit/billautocomplete') ,  
-                "amt" : forms.TextInput()   ,
+                "amt" : forms.TextInput() ,
             }
             
     model = models.BankCollection
@@ -1330,100 +1341,6 @@ class ChequeDepositAdmin(CustomAdminModel) :
     custom_views = [("get-outstanding/<str:inum>","get_outstanding"),("billautocomplete",BillAutocomplete.as_view())]
 
 
-    # @admin.display(boolean=True)    
-    # def saved(self,obj) : 
-    #     return bool(obj.collection.count() > 0)  
-      
-    # @admin.action(description="Save without Push")
-    # def push_collection_static(self, request, queryset) : 
-    #     queryset.update(pushed = True)
-
-    # @admin.action(description="Push Collection")
-    # def push_collection(self, request, queryset):
-    #     queryset = queryset.filter(pushed = False)
-    #     if not ('confirm_action' in request.POST) :
-    #         chqs = list(queryset)
-    #         colls = [ coll for chq in chqs for coll in chq.collection.all() ]
-    #         if len(colls) == 0 : 
-    #             messages.warning(request,"No collections present for the selected cheques")
-    #             return redirect(request.path)
-    #         value = sum([ coll.amt for coll in colls ])
-    #         return render_confirmation_page('push_collection_confirmation.html',request,queryset,extra_context={ 
-    #                     "total_chqs":len(chqs),"total_bills" : len(colls) , "amt" : value , "show_objects" : True , "show_cancel_btn":  True ,
-    #         })   
-    #     billing = Billing()
-    #     coll:pd.DataFrame = billing.download_manual_collection() # type: ignore
-    #     manual_coll = []
-    #     bill_chq_pairs = []
-    #     for bank_obj in queryset.all() : 
-    #         for coll_obj in bank_obj.collection.all() :
-    #             bill_no  = coll_obj.bill_id 
-    #             row = coll[coll["Bill No"] == bill_no].copy()
-    #             row["Mode"] = ( "Cheque/DD"	if bank_obj.type == "cheque" else "Cheque/DD") ##Warning
-    #             row["Retailer Bank Name"] = "KVB 650"	
-    #             row["Chq/DD Date"]  = bank_obj.date.strftime("%d/%m/%Y")
-    #             row["Chq/DD No"] = chq_no = f"{bank_obj.date.strftime('%d%m')}{bank_obj.idx}".lstrip('0')
-    #             row["Amount"] = coll_obj.amt
-    #             manual_coll.append(row)
-    #             bill_chq_pairs.append((chq_no,bill_no))
-
-    #     manual_coll = pd.concat(manual_coll)
-    #     manual_coll["Collection Date"] = datetime.date.today()
-    #     print("Manual collection :",manual_coll)
-
-    #     f = BytesIO()
-    #     manual_coll.to_excel(f,index=False)
-    #     f.seek(0)
-    #     res = billing.upload_manual_collection(f)
-
-    #     print("Upload collection :",pd.read_excel(billing.download_file(res["ul"])).iloc[0] )
-
-    #     settle_coll:pd.DataFrame = billing.download_settle_cheque() # type: ignore
-    #     settle_coll = settle_coll[ settle_coll.apply(lambda row : (str(row["CHEQUE NO"]),row["BILL NO"]) in bill_chq_pairs ,axis=1)].iloc[:1]
-    #     settle_coll["STATUS"] = "SETTLED"
-    #     f = BytesIO()
-    #     settle_coll.to_excel(f,index=False)
-    #     f.seek(0)
-    #     res = billing.upload_settle_cheque(f)
-    #     print("Response collection :",pd.read_excel(billing.download_file(res["ul"])) )
-    #     queryset.update(pushed = True)
-    #     sync_reports({"collection" : None})
-
-    # def changelist_view(self, request, extra_context:dict ={}): # type: ignore
-
-    #     class BankStatementUploadForm(forms.Form):
-    #         bank = forms.ChoiceField(choices=[("sbi","SBI"),("bob","BOB")],initial="sbi")
-    #         excel_file = forms.FileField(label="Bank Statement Excel")
-    #         Submit = submit_button("Upload")
-    #         Action = ""
-
-    #     if request.method == 'GET' :
-    #         sync_reports({"sales":60*60,"adjustment":60*60,"collection":10*60})
-
-    #     form = BankStatementUploadForm()
-    #     if request.method == 'POST' and (request.POST.get("action") is None):
-    #         form = BankStatementUploadForm(request.POST, request.FILES)
-    #         if form.is_valid():
-    #             excel_file = request.FILES['excel_file']
-    #             df = pd.read_csv(excel_file , skiprows=17 , sep="\t")
-    #             df = df.rename(columns={"Txn Date":"date","Credit":"amt","Ref No./Cheque No.":"ref","Description":"desc"})
-    #             df = df.iloc[:-1]
-    #             df["date"] = pd.to_datetime(df["date"],format='%d %b %Y')
-    #             df["idx"] = df.groupby("date").cumcount() + 1 
-    #             df = df[["date","ref","desc","amt","idx"]]
-    #             df["id"] = df["date"].dt.strftime("%d%m%Y") + df['idx'].astype(str)
-    #             df["date"] = df["date"].dt.date
-    #             df.amt = df.amt.astype(str).str.replace(",","").apply(lambda x  : float(x.strip()) if x.strip() else 0)
-    #             df["bank"] = form.cleaned_data["bank"]
-    #             bulk_raw_insert("bank",df,upsert=True)
-    #             messages.success(request, "Statement successfully uploaded")
-    #         else : 
-    #             messages.error(request, "Statement upload failed")
-    #     extra_context['form'] = form
-    
-    #     return super().changelist_view(request, extra_context=extra_context | {"title" : ""})
-
-
     def response_add(self, request, obj, post_url_continue=None):
         ##Override parent function to prevent chnage success message when the bank collection is not valid 
         if obj.is_valid : 
@@ -1523,8 +1440,8 @@ class BankStatementAdmin(CustomAdminModel) :
             if obj_id:
                 bank_entry = models.BankStatement.objects.get(pk=obj_id)
                 kwargs["queryset"] = models.ChequeDeposit.objects.filter(
-                    amt__gte=bank_entry.amt - 50,
-                    amt__lte=bank_entry.amt + 50
+                    amt__gte=bank_entry.amt - 10,
+                    amt__lte=bank_entry.amt + 10
                 ).filter( Q(bank_entry__isnull=True) | Q(bank_entry = bank_entry) )
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
     
