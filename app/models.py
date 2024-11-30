@@ -321,9 +321,7 @@ class Vehicle(models.Model) :
 ## Collection Models
 
 class ChequeDeposit(models.Model) :
-    BANK_CHOICES = ["KVB 650","HDFC","CENTRAL BANK","SBI","INDIAN BANK","IOB","AXIS","ICICI",
-                    "BARODA","CUB","KOTAK","SYNDICATE","TMB","UNION BANK","UNITED BANK","TCB","PGB"]
-    
+    BANK_CHOICES = ["KVB 650","SBI","CANARA","BARODA","UNION BANK","AXIS","HDFC","CENTRAL BANK","INDIAN BANK","IOB","ICICI","CUB","KOTAK","SYNDICATE","TMB","UNITED BANK","TCB","PGB"]
     party = ForeignKey("app.Party",on_delete=models.DO_NOTHING,null=True)
     bank = models.CharField(max_length=100, choices=zip(BANK_CHOICES,BANK_CHOICES))
     cheque_no = models.CharField(max_length=20)
