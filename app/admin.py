@@ -1242,6 +1242,11 @@ class ChequeDepositAdmin(CustomAdminModel) :
     readonly_fields = ["deposit_date"]
     actions = ['generate_deposit_slip']
 
+    def get_actions(self,request) : 
+        actions = super().get_actions(request)
+        if "delete_selected" in actions : actions.pop("delete_selected")
+        return actions
+
     def has_change_permission(self, request, obj=None):
         if (obj and hasattr(obj,"bank_entry")) and (obj.bank_entry is not None) : 
             return False 
