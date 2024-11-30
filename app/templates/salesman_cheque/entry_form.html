@@ -1,0 +1,138 @@
+{% load form_extras %}
+{% load i18n %}
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+    <style>
+        /* Styles for the popup */
+        #popup {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+        }
+
+        #popup-content {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            max-width: 90%;
+            max-height: 80%;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<script type="text/javascript" src="{% static 'admin/js/vendor/jquery/jquery.js' %}"></script>
+<body class="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+    <div class="bg-white shadow-md rounded-lg p-6 w-96">
+        <h1 class="text-2xl font-bold text-center mb-6">Cheque Entry</h1>
+        <form class="space-y-4" method="post">
+            {% csrf_token %}
+            {{ form.salesman }}
+            <div>
+                <label for="id_party" class="block text-gray-700 font-medium">Party</label>
+                {{ form.party|add_class:"w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" }}
+            </div>
+
+            <!-- Type (Cheque / NEFT) -->
+            <div>
+                <label for="id_type" class="block text-gray-700 font-medium">Entry Type</label>
+                {{ form.type|add_class:"w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" }}
+            </div>
+
+            <!-- Total Amount -->
+            <div>
+                <label for="id_total_amount" class="block text-gray-700 font-medium">Total Amount</label>
+                {{ form.total_amount|add_class:"w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" }}
+            </div>
+
+            <!-- Cheque Date -->
+            <div>
+                <label for="id_cheque_date" class="block text-gray-700 font-medium">Cheque Date</label>
+                {{ form.cheque_date|add_class:"w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" }}
+            </div>
+
+            <!-- Total Bills Link -->
+            <div class="text-center mt-4">
+                <a
+                    href="#"
+                    id="total-bills-link"
+                    class="text-blue-500 underline hover:text-blue-700"
+                >
+                    Total Cheques : {{ cheques|length }}
+                </a>
+            </div>
+
+            <!-- Buttons -->
+            <div class="flex flex-col space-y-4">
+                <button
+                    type="submit"
+                    class="w-full bg-green-500 text-white p-2 rounded-md hover:bg-green-600 focus:outline-none"
+                >
+                    Proceed
+                </button>
+                <a
+                    href="/salesman_cheque/"
+                    class="w-full text-center bg-red-500 text-white p-2 rounded-md hover:bg-red-600 focus:outline-none"
+                >
+                    Logout
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Popup -->
+    <div id="popup">
+        <div id="popup-content">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Cheque Details</h2>
+                <button
+                    id="close-popup"
+                    class="text-red-500 text-xl font-bold focus:outline-none text-3xl"
+                >
+                    &times;
+                </button>
+            </div>
+            <table class="table-auto w-full border-collapse border border-gray-300">
+                <thead>
+                    <tr class="bg-gray-100">
+                        <th class="border border-gray-300 px-4 py-2 text-left">Party</th>
+                        <th class="border border-gray-300 px-4 py-2 text-right">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for party, amount in cheques %}
+                        <tr>
+                            <td class="border border-gray-300 px-4 py-2">{{ party }}</td>
+                            <td class="border border-gray-300 px-4 py-2 text-right">{{ amount }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- JavaScript for Popup -->
+    <script>
+        document.getElementById('total-bills-link').addEventListener('click', function (e) {
+            e.preventDefault();
+            document.getElementById('popup').style.display = 'flex';
+        });
+
+        document.getElementById('close-popup').addEventListener('click', function () {
+            document.getElementById('popup').style.display = 'none';
+        });
+    </script>
+</body>
+</html>

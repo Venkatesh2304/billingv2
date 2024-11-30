@@ -35,7 +35,6 @@ ALLOWED_HOSTS = ["*"]
 
 INSTALLED_APPS = [
     "app",
-    'django_admin_logs',
     'dal',
     'dal_select2',
     'rangefilter',
@@ -105,6 +104,11 @@ DATABASES = {
             'timeout': 30,  
     }
 }
+
+
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+]
 
 
 # Password validation

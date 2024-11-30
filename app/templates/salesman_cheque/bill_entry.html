@@ -1,0 +1,155 @@
+{% load form_extras %}
+{% load i18n %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Bills</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen bg-gray-100">
+    <div class="bg-white shadow-md rounded-lg p-6 w-96">
+        <h1 class="text-2xl font-bold text-center mb-6">Add Bills</h1>
+        <form id="bills-form" method="post" onsubmit="return validateForm()" action="/add_salesman_cheque">
+            {% csrf_token %}
+
+            <!-- Hidden Fields for Previous Form Data with Data Types -->
+            {% for key, value in previous_form_data.items %}
+                <input type="hidden" name="{{ key }}" value="{{ value }}">
+            {% endfor %}
+
+            
+            <!-- Bills Rows -->
+            <div id="rows-container" class="space-y-4">
+                <!-- Initial Row -->
+                <div class="row flex space-x-4">
+                    <select
+                        name="bill_no"
+                        class="w-1/2 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bill-select"
+                        required
+                    >
+                        <option value="" disabled selected>Select Bill</option>
+                        {% for bill in bills %}
+                            <option value="{{ bill }}">{{ bill }}</option>
+                        {% endfor %}
+                    </select>
+                    <input
+                        type="number"
+                        name="amount"
+                        placeholder="Amount"
+                        class="w-1/2 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 amount-input"
+                        required
+                    />
+                </div>
+            </div>
+
+            <!-- Add/Delete Buttons -->
+            <div class="flex space-x-4 my-4">
+                <button
+                    type="button"
+                    id="add-row"
+                    class="w-1/2 bg-green-500 text-white p-2 rounded-md hover:bg-green-600 focus:outline-none"
+                >
+                    Add Row
+                </button>
+                <button
+                    type="button"
+                    id="remove-row"
+                    class="w-1/2 bg-red-500 text-white p-2 rounded-md hover:bg-red-600 focus:outline-none"
+                >
+                    Remove Row
+                </button>
+            </div>
+
+            <!-- Submit Button -->
+            <button
+                type="submit"
+                class="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600 focus:outline-none"
+            >
+                Submit
+            </button>
+        </form>
+    </div>
+
+    <script>
+        const rowsContainer = document.getElementById('rows-container');
+        const addRowButton = document.getElementById('add-row');
+        const removeRowButton = document.getElementById('remove-row');
+        const totalAmount = parseFloat('{{ previous_form_data.total_amount }}'); // Total amount from context
+        var isSubmitted = false;
+
+        // Add a new row by duplicating the last one
+        addRowButton.addEventListener('click', () => {
+            const lastRow = rowsContainer.lastElementChild;
+            if (lastRow) {
+                const newRow = lastRow.cloneNode(true);
+
+                // Clear the selected value and amount in the new row
+                const select = newRow.querySelector('.bill-select');
+                const input = newRow.querySelector('.amount-input');
+                select.value = '';
+                input.value = '';
+
+                rowsContainer.appendChild(newRow);
+            }
+        });
+
+        // Remove the last row, but ensure at least one remains
+        removeRowButton.addEventListener('click', () => {
+            if (rowsContainer.children.length > 1) {
+                rowsContainer.removeChild(rowsContainer.lastChild);
+            } else {
+                alert('You must have at least one row!');
+            }
+        });
+
+        // Form validation
+        function validateForm() {
+            if (isSubmitted) {
+                return false;
+            }
+
+            const rows = document.querySelectorAll('.row');
+            const billNumbers = new Set();
+            let total = 0;
+
+            for (const row of rows) {
+                const billSelect = row.querySelector('.bill-select');
+                const amountInput = row.querySelector('.amount-input');
+                const billNo = billSelect.value;
+                const amount = parseFloat(amountInput.value);
+
+                if (!billNo) {
+                    alert('All rows must have a selected bill number.');
+                    return false;
+                }
+
+                if (billNumbers.has(billNo)) {
+                    alert('Duplicate bill numbers are not allowed.');
+                    return false;
+                }
+
+                billNumbers.add(billNo);
+
+                if (isNaN(amount) || amount <= 0) {
+                    alert('All rows must have a valid amount.');
+                    return false;
+                }
+
+                total += amount;
+            }
+
+            if (Math.abs(total - totalAmount) > 10) {
+                alert(`The total amount must match ${totalAmount}. Current total: ${total}`);
+                return false;
+            }
+
+            isSubmitted = true ; 
+            return true;
+        }
+
+    </script>
+</body>
+</html>

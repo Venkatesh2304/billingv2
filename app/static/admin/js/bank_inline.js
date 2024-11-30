@@ -32,6 +32,7 @@ function fetchAmt(id,i) {
             console.log( data.party,  data.balance )
             document.querySelectorAll('input[name$="balance"]')[i].value = data.balance ;
             document.getElementById("collection-group").querySelectorAll('input[name$="party"]')[i].value = data.party ;
+            document.getElementById("collection-group").querySelectorAll('input[name$="amt"]')[i].value = data.balance ;
         })
         .catch(error => console.error('Error fetching amt:', error));
 }
@@ -41,12 +42,14 @@ function fetchStaticAmt(id,i) {
         .then(response => response.json())
         .then(data => {
             document.querySelectorAll('.field-balance')[i].innerText = data.balance ;
+            document.getElementById("collection-group").querySelectorAll('.field-amt')[i].querySelector("input").value = parseInt(data.balance) ;
             document.getElementById("collection-group").querySelectorAll('.field-party')[i].innerText = data.party ;
         })
         .catch(error => console.error('Error fetching amt:', error));
 }
 
 function validateAmounts() {
+
     const coll_type =  document.getElementById("id_type") ; 
     if ( coll_type ) { 
         if(coll_type.value == "neft") { 

@@ -250,13 +250,11 @@ class WholeSalePrint(Bill):
         proxy = True
         verbose_name = "WholeSale Print"
 
-
 class BillDelivery(Bill):
     class Meta:
         proxy = True
         verbose_name = "Bill Delivery"
         
-
 class Outstanding(models.Model) : 
       party = ForeignKey("app.Party",on_delete=models.CASCADE)
       inum = CharField(max_length=20,primary_key=True)
@@ -323,20 +321,11 @@ class Vehicle(models.Model) :
 ## Collection Models
 
 class ChequeDeposit(models.Model) :
-    BANK_CHOICES = [
-        ('SBI', 'State Bank of India'),
-        ('KVB', 'Karur Vysya Bank'),
-        ('HDFC', 'HDFC Bank'),
-        ('ICICI', 'ICICI Bank'),
-        ('IB', 'Indian Bank'),
-        ('PNB', 'Punjab National Bank'),
-        ('BOB', 'Bank of Baroda'),
-        ('UBI', 'Union Bank of India'),
-        ('CANARA', 'Canara Bank'),
-        ('AXIS', 'Axis Bank')
-    ]
+    BANK_CHOICES = ["KVB 650","HDFC","CENTRAL BANK","SBI","INDIAN BANK","IOB","AXIS","ICICI",
+                    "BARODA","CUB","KOTAK","SYNDICATE","TMB","UNION BANK","UNITED BANK","TCB","PGB"]
+    
     party = ForeignKey("app.Party",on_delete=models.DO_NOTHING,null=True)
-    bank = models.CharField(max_length=100, choices=BANK_CHOICES)
+    bank = models.CharField(max_length=100, choices=zip(BANK_CHOICES,BANK_CHOICES))
     cheque_no = models.CharField(max_length=20)
     amt = models.FloatField()
     cheque_date = models.DateField()
@@ -361,7 +350,7 @@ class BankStatement(models.Model) :
     ref = models.TextField(max_length=200)
     desc = models.TextField(max_length=200)
     amt = models.IntegerField()
-    bank = models.TextField(max_length=20)
+    bank = models.TextField(max_length=20,choices=(("sbi","SBI"),("kvb","KVB")))
     type = models.TextField(max_length=15,choices=(("cheque","Cheque"),("neft","NEFT"),("upi","UPI (IKEA)"),("cash","Cash Deposit"),("others","Others")),null=True)
     cheque_entry = models.OneToOneField("app.ChequeDeposit", on_delete=models.DO_NOTHING, null=True, blank=True, related_name='bank_entry')
 
@@ -371,41 +360,21 @@ class BankStatement(models.Model) :
 
 
 
-
 class SalesmanCollectionBill(models.Model) : 
-    id = models.CharField(max_length=25,primary_key=True)
     chq = ForeignKey("app.SalesmanCollection",on_delete=models.CASCADE,related_name="bills")
     inum = ForeignKey("app.Sales",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING)
     amt = models.IntegerField()
     
 class SalesmanCollection(models.Model) : 
-    id = models.CharField(max_length=25,primary_key=True)
+    # id = models.CharField(max_length=25,primary_key=True)
     date = models.DateField()
     amt = models.IntegerField()
+    party = ForeignKey("app.Party",on_delete=models.DO_NOTHING,null=True)
     type = models.TextField(max_length=15,choices=(("cheque","Cheque"),("neft","NEFT")),null=True)
     salesman = models.CharField(max_length=25,null=True,blank=True)
-    time = models.DateTimeField(null=True)
-    DB_NAME = "colls"
+    time = models.DateTimeField(null=True,auto_now_add=True)
     
-    def delete(self, *args, **kwargs) :
-        db =  client["test"][self.DB_NAME]
-        db.delete_one({"_id": ObjectId(self.id)})
-        return super().delete(*args, **kwargs)
-    
-    @classmethod
-    def fetch_from_mongo(cls) : 
-        db =  client["test"][cls.DB_NAME]
-        max_time = cls.objects.aggregate(time = Max("time"))["time"] or datetime.datetime(2024,1,1)
-        rows = db.find({"time" : { "$gt" :  max_time.astimezone(timezone("UTC")) }}) 
-        for row in rows : 
-            chq_id = str(row["_id"])
-            row["time"] = row["time"] + datetime.timedelta(hours=5,minutes=30)
-            cls.objects.get_or_create(id = chq_id , defaults = {"amt" :row["amount"], "date" :row["date"] , "time" : row["time"] , 
-                                                                                      "salesman": row["user"] , "type" : row["type"]})
-            for bill in row["bills"] : 
-                SalesmanCollectionBill.objects.get_or_create(id = str(bill["_id"]) , defaults = 
-                                                              {"inum_id" : bill["bill_no"] , "amt" :bill["amount"],  "chq_id" : chq_id})
-    
+ 
 class Settings(models.Model):
     key = models.CharField(primary_key=True,max_length=100)  # Define keys for settings, e.g., "notifications"
     status = models.BooleanField(default=True)  
@@ -426,3 +395,9 @@ class TodayBillIn(Vehicle):
 class Sync(models.Model):
     process = models.CharField(max_length=20,primary_key=True)
     time = models.DateTimeField()
+
+
+# from django.contrib.auth.models import AbstractUser
+
+# class CustomUser(AbstractUser):
+#     pass

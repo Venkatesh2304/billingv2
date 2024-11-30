@@ -169,13 +169,77 @@ def get_party_outstanding(request):
                         safe=False)
 
 
+def salesman_cheque_entry_view(request):
+    salesman = _salesman = request.GET.get('salesman',None)
+
+    if salesman is None : 
+        salesmans = models.Beat.objects.values_list('salesman_name', flat=True).distinct()
+        class SalesmanForm(forms.Form):
+            salesman = forms.ChoiceField( choices = zip(salesmans,salesmans) , label="Select Salesman")
+        return render(request, 'salesman_cheque/salesman_select.html', {'form': SalesmanForm()})
+    
+    if request.method == "GET" : 
+        beats = models.Beat.objects.filter(salesman_name=salesman,days__contains = 'friday').values_list('name', flat=True)
+        parties = models.Outstanding.objects.filter(beat__in=beats).filter(balance__lte=-1).values_list('party__code',"party__name").distinct()
+        cheques = models.SalesmanCollection.objects.filter(salesman=salesman,date=datetime.date.today()).values_list('party__name','amt')
+        class EntryForm(forms.Form):
+            party = forms.ChoiceField(
+                choices= (("",""),) + tuple(parties) ,
+                label="Party",
+                required=True,
+            )
+            type = forms.ChoiceField(
+                choices=[('cheque', 'Cheque'), ('neft', 'NEFT')],
+                label="Entry Type",
+                required=True
+            )
+            total_amount = forms.DecimalField(
+                max_digits=10,
+                decimal_places=2,
+                label="Total Amount",
+                widget=forms.NumberInput(attrs={
+                    'placeholder': 'Enter total amount'
+                }),
+                required=True
+            )
+            cheque_date = forms.DateField(
+                widget=forms.DateInput(attrs={
+                    'type': 'date',
+                    'placeholder': 'Select cheque date'
+                }),
+                label="Cheque Date",
+                required=True
+            )
+            salesman = forms.CharField(widget=forms.HiddenInput(),initial=_salesman)
+        return render(request, 'salesman_cheque/entry_form.html', {'form': EntryForm(), "cheques" : cheques })
+    else : 
+        party = request.POST.get("party")
+        bills = models.Outstanding.objects.filter(party_id=party).filter(balance__lte=-1).values_list('inum',flat=True)
+        return render(request, 'salesman_cheque/bill_entry.html', { "bills" : bills , "previous_form_data" : request.POST })
+
+def add_salesman_cheque(request) : 
+    salesman = request.POST.get("salesman")
+    party = request.POST.get("party")
+    entry_type = request.POST.get("type")
+    total_amount = int(request.POST.get("total_amount"))
+    cheque_date = datetime.datetime.strptime(request.POST.get("cheque_date"),"%Y-%m-%d").date()
+    bills = request.POST.getlist("bill_no")
+    amts = [ int(amt) for amt in request.POST.getlist("amount") ]
+    if abs(sum(amts)-total_amount) > 10 : return JsonResponse("Amounts do not match",safe=False)
+    chq_obj = models.SalesmanCollection.objects.create(date=cheque_date,amt=total_amount,type=entry_type,
+                                             salesman=salesman,party_id = party)
+    chq_obj.save()
+    for bill,amt in zip(bills,amts) :
+        models.SalesmanCollectionBill.objects.create(inum_id=bill,amt=amt,chq=chq_obj).save()
+    return redirect(f"salesman_cheque/?salesman={salesman}")
+
 
 def update(request) : 
     os.system("git stash && git pull --ff && pip install -r requirements.txt && python manage.py migrate")
     return JsonResponse("Done")
 
 def force_sales_sync(request) :
-    sync_reports(limits={"sales":datetime.date()} , 
+    sync_reports(limits={"sales":None} , 
                                 min_days_to_sync={"collection":15})
     
 ##depricated
@@ -204,6 +268,5 @@ def manual_print_view(request):
         </form>"""
     
     return HttpResponse(response_html)
-
 
 

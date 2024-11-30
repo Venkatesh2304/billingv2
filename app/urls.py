@@ -1,7 +1,7 @@
 from . import views,admin
 from .admin import admin_site
 from django.urls import path
-from .views import manual_print_view,basepack,get_bill_data,scan_bills,vehicle_selection,update,get_party_outstanding
+from .views import manual_print_view,basepack,get_bill_data,scan_bills,vehicle_selection,update,get_party_outstanding,salesman_cheque_entry_view,add_salesman_cheque
 from django.views.decorators.cache import cache_page
 
 urlpatterns = [
@@ -10,6 +10,8 @@ urlpatterns = [
     path('manual_print/', manual_print_view , name='manual-print'),
     path('get_bill_data/', get_bill_data, name='get_bill_data'),
     path('get_party_outstanding/', get_party_outstanding, name='get_party_outstanding'),
+    path('salesman_cheque/', salesman_cheque_entry_view, name='salesman_cheque'),
+    path('add_salesman_cheque', add_salesman_cheque, name='add_salesman_cheque'),
     path('scan_bills', scan_bills, name='scan_bills'),
     path('vehicle_selection', vehicle_selection, name='vehicle_selection'),
     path('party-sync', basepack, name='basepack'),

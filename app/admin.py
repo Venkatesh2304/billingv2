@@ -315,7 +315,6 @@ def run_billing_process(billing_log: models.Billing,billing_form : forms.Form) :
                 if (bill_value <= 500) or (outstanding_value <= 500):
                     order.release = True 
                     order.save()
-        models.SalesmanCollection.fetch_from_mongo()
                     
     def DeliveryProcess() : 
         billing.Delivery()
@@ -369,14 +368,13 @@ def get_last_billing() :
 Permission = Enum("Permission","add delete change")
 
 class ModelPermission() : 
-    
     permissions = []
-
+    
     def has_add_permission(self, request,obj = None):
-        return Permission.add in self.permissions
+        return (Permission.add in self.permissions) 
 
     def has_change_permission(self, request, obj=None):
-        return Permission.change in self.permissions
+        return Permission.change in self.permissions 
     
     def has_delete_permission(self, request, obj=None):
         return Permission.delete in self.permissions
@@ -793,9 +791,6 @@ class SalesCollectionAdmin(CustomAdminModel) :
     ordering = ["salesman"]    
     inlines = [SalesCollectionBillInline]
     
-    def party(self,obj) : 
-        bill = obj.bills.first()
-        return bill.inum.party.name if bill else "-"
     
     def cheque_date(self,obj) : 
         return obj.date 
@@ -808,7 +803,6 @@ class SalesCollectionAdmin(CustomAdminModel) :
             obj.delete()
 
     def changelist_view(self, request: HttpRequest, extra_context = {}) -> TemplateResponse:
-        models.SalesmanCollection.fetch_from_mongo()
         return super().changelist_view(request, extra_context = extra_context | {"title" : ""}) # type: ignore
         
 
@@ -848,7 +842,7 @@ class PrintAdmin(CustomAdminModel) :
     
     permissions = [Permission.change]
     change_list_template = "form_and_changelist.html"
-    list_display = ["bill","party","salesman","print_type","print_time","einvoice","amount",delivered,"vehicle","s","t"]#,"einvoice","ctin"]
+    list_display = ["bill","party","salesman","print_type","print_time","einvoice","amount",delivered,"vehicle"]#,"einvoice","ctin"]
     ordering = ["bill"]
     actions = ["both_copy","loading_sheet_salesman","loading_sheet","first_copy","double_first_copy","second_copy","printed_by_mistake",
                "add_to_loading_sheet","remove_from_loading_sheet"]
@@ -1469,9 +1463,9 @@ class ChequeDepositAdmin(CustomAdminModel) :
 class BankStatementAdmin(CustomAdminModel) : 
 
     change_list_template = "form_and_changelist.html"
-    list_display = ["date","ref","desc","amt","saved"]
-    readonly_fields = ["amt","ref","desc","date","bank","idx","id"]
-    hidden_fields = ["idx","id"]
+    list_display = ["date","ref","desc","amt","bank","saved","id"]
+    readonly_fields = ["amt","desc","date","ref","bank","idx","id"]
+    hidden_fields = ["idx"]
     list_filter = ["date"]
     # search_fields = ["amt","desc"]
     list_display_links = ["date","amt"]
@@ -1532,6 +1526,7 @@ class BankStatementAdmin(CustomAdminModel) :
     def changelist_view(self, request, extra_context:dict ={}): # type: ignore
 
         class BankStatementUploadForm(forms.Form):
+            # bank = forms.ChoiceField(choices=(("sbi","SBI"),("kvb","KVB")),initial="sbi")
             excel_file = forms.FileField(label="Bank Statement Excel")
             Submit = submit_button("Upload")
             Action = ""
@@ -1544,17 +1539,32 @@ class BankStatementAdmin(CustomAdminModel) :
             form = BankStatementUploadForm(request.POST, request.FILES)
             if form.is_valid():
                 excel_file = request.FILES['excel_file']
-                df = pd.read_csv(excel_file , skiprows=17 , sep="\t")
-                df = df.rename(columns={"Txn Date":"date","Credit":"amt","Ref No./Cheque No.":"ref","Description":"desc"})
-                df = df.iloc[:-1]
-                df["date"] = pd.to_datetime(df["date"],format='%d %b %Y')
+                bank_name = "sbi" if excel_file.name.endswith("xls") else "kvb" #form.cleaned_data["bank"]
+                df = pd.DataFrame()
+                bank_index = 0 
+
+                if bank_name == "sbi" : 
+                    bank_index = 0 
+                    df = pd.read_csv(excel_file , skiprows=17 , sep="\t")
+                    df = df.rename(columns={"Txn Date":"date","Credit":"amt","Ref No./Cheque No.":"ref","Description":"desc"})
+                    df = df.iloc[:-1]
+                    df["date"] = pd.to_datetime(df["date"],format='%d %b %Y')
+
+                if bank_name == "kvb" : 
+                    bank_index = 1
+                    df = pd.read_csv(excel_file , skiprows=13 , sep=",")
+                    df = df.rename(columns={"\tTransaction Date":"date","Credit":"amt","Cheque No.":"ref","Description":"desc"})
+                    df["date"] = pd.to_datetime(df["date"],format='%d-%m-%Y %H:%M:%S')
+                    df = df.sort_values("date")
+                    df["ref"] = df["ref"].astype(str).str.split(".").str[0]
+
                 df["idx"] = df.groupby("date").cumcount() + 1 
                 df = df[["date","ref","desc","amt","idx"]]
-                df["id"] = (lambda date, number: ((date.dt.year - 2020) * 12 * 31  + date.dt.month * 31  + date.dt.day) * 100 + number)(df.date,df.idx).astype(str)
+                df["bank"] = bank_name 
+                df["id"] = (lambda date, number: (( 10*bank_index + (date.dt.year - 2020)) * 12 * 31  + date.dt.month * 31  + date.dt.day) * 100 + number)(df.date,df.idx).astype(str)
                 # df["id"] = df["date"].dt.strftime("%d%m%Y") + df['idx'].astype(str)
                 df["date"] = df["date"].dt.date
                 df.amt = df.amt.astype(str).str.replace(",","").apply(lambda x  : float(x.strip()) if x.strip() else 0)
-                df["bank"] = "SBI"
                 bulk_raw_insert("bankstatement",df,ignore=True)
                 messages.success(request, "Statement successfully uploaded")
             else : 
@@ -1588,7 +1598,7 @@ class BankCollectionAdmin(CustomAdminModel) :
     @admin.action(description="Push Collection")
     def push_collection(self, request, queryset):
 
-        queryset = queryset.filter(pushed = False)
+        queryset = queryset.filter(pushed = False,bank_entry__isnull = False)
         billing = Billing()
         coll:pd.DataFrame = billing.download_manual_collection() # type: ignore
         manual_coll = []
@@ -1598,14 +1608,9 @@ class BankCollectionAdmin(CustomAdminModel) :
             bill_no  = coll_obj.bill_id 
             row = coll[coll["Bill No"] == bill_no].copy()
             row["Mode"] = "Cheque/DD" #("Cheque/DD" if bank_obj.type == "cheque" else "NEFT") ##Warning
-            row["Retailer Bank Name"] = "KVB 650"	
+            row["Retailer Bank Name"] =  coll_obj.cheque_entry.bank.upper() if coll_obj.cheque_entry else "KVB 650" 	
             row["Chq/DD Date"]  = bank_obj.date.strftime("%d/%m/%Y")
             chq_no = bank_obj.id 
-            #f"{bank_obj.date.strftime('%d%m')}{bank_obj.idx}".lstrip('0')
-            # if bank_obj.type == "cheque" : 
-            #     chq_no = f"{bank_obj.date.strftime('%d%m')}{bank_obj.idx}".lstrip('0')
-            # if bank_obj.type == "neft" : 
-            #     chq_no = f"{bank_obj.date.strftime('%d%m')}{bank_obj.idx}" + bill_no 
             row["Chq/DD No"] = chq_no
             row["Amount"] = coll_obj.amt
             manual_coll.append(row)
@@ -1710,7 +1715,6 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
         else : 
             print("Nothing to upload basepack")
 
-
     def beat_export(self,ikea,form) : 
         ##Start Beat Export and Order Sync after basepack uploaded
         today = datetime.date.today() 
@@ -1725,13 +1729,14 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
         ikea.post("/rsunify/app/ikeaCommonUtilController/qocRepopulation")
         export_num = ikea.post("/rsunify/app/quantumExport/startExport",
                     data = {"exportData": json.dumps(export_data | {"salesManId": sm ,"beatId":"-1"}) } ).json()
-        while True : 
+        for i in range(60) : 
             status = ikea.post("/rsunify/app/quantumExport/getExportStatus",{"processId": export_num}).json()
             if str(status) == str(["0","0","1"]) : #comparing two lists
                 print("Beat Export Completed")
-                break 
+                return 
             time.sleep(5)
             ikea.logger.debug(f"Waiting for beat export to be completed")
+        raise Exception("Beat Export Timed Out After 5 Minutes")
 
     def order_sync(self,ikea,form) : 
         ikea.post("/rsunify/app/sfmIkeaIntegration/callSfmIkeaIntegrationSync")
@@ -1780,6 +1785,7 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
                 models.BasepackProcessStatus.objects.all().delete()     
         refresh_time = 20000 if self.basepack_lock.locked() else 1e7 
         return super().changelist_view(request, extra_context | {"refresh_time" : refresh_time , "form" : form, "title" : "" })
+
 
 class SalesmanPendingSheetAdmin(CustomAdminModel) :
      
@@ -1982,7 +1988,7 @@ class TodayIn(TodayOut) :
 
 
 admin_site = MyAdminSite(name='myadmin')
-admin_site.has_permission = lambda r: setattr(r, 'user', AccessUser()) or True # type: ignore
+# admin_site.has_permission = lambda r: setattr(r, 'user', AccessUser()) or True # type: ignore
 
 admin_site.register(models.Party,PartyAdmin)
 

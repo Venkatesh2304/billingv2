@@ -34,7 +34,8 @@ cur = connection.cursor()
 # cur.execute("update app_bill set loading_sheet_id = NULL where loading_sheet_id = 'SMA59361'")
 # cur.execute("DELETE from app_salesmanloadingsheet where inum = 'SMA59361'")
 # ds
-# cur.execute("DELETE from app_bankstatement")
+cur.execute("DELETE from app_salesmancollectionbill")
+cur.execute("DELETE from app_salesmancollection")
 # cur.execute("DELETE from app_chequedeposit")
 # fdg
 print( pd.read_sql(f"""select salesman_name as user , (select name from app_party where party_id = code) as party , inum as bill_no , -balance as amount  
