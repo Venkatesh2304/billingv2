@@ -1190,6 +1190,7 @@ class WholeSalePrintAdmin(PrintAdmin) :
 
 
 class BillDeliveryAdmin(CustomAdminModel) : 
+    
     list_display = ["bill_id","party","vehicle_id","loading_time","delivered","delivered_time","is_loading_sheet","bill_date"]
     list_filter = ["vehicle_id","loading_time","delivered_time",
                    create_simple_admin_list_filter("Beat","beat",{
@@ -1855,7 +1856,7 @@ class TodayOut(CustomAdminModel) :
 
     change_list_template = "form_and_changelist.html"
     list_display_links = [] 
-    list_display = ["vehicle","bills","loading_sheet","total"]
+    list_display = ["vehicle","bills","loading_sheet","total","beats"]
     field = "loading_time"
     title = "Bill Out From Godown"
 
@@ -1875,6 +1876,11 @@ class TodayOut(CustomAdminModel) :
     def loading_sheet(self,obj) : 
         return self.get_bills_queryset(obj).filter(loading_sheet__isnull=False).values_list(
                                                     "loading_sheet",flat=True).distinct().count()
+    
+    def beats(self,obj) :
+        b = self.get_bills_queryset(obj).values_list("bill_id",flat=True)
+        c = models.Sales.objects.filter(inum__in = b).values("beat").annotate(n = Count("inum")).order_by("-n").values_list("beat","n")
+        return mark_safe("</br>".join([ f"{i[0]} : {i[1]}" for i in c]))
     
     def total(self,obj) : 
         return self.bills(obj) + self.loading_sheet(obj)
