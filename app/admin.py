@@ -1496,7 +1496,7 @@ class BankStatementAdmin(CustomAdminModel) :
 
 class BankCollectionAdmin(CustomAdminModel) : 
 
-    list_display = ["bill","party","amt","cheque_no","pushed"]
+    list_display = ["bill","party","amt","type","cheque_no","pushed"]
     permissions = [Permission.delete]
     actions = ["push_collection"]
     
@@ -1513,9 +1513,11 @@ class BankCollectionAdmin(CustomAdminModel) :
         c = obj.cheque_entry 
         return  c.cheque_no if c else None 
     
-
-    # def get_queryset(self, request: HttpRequest) -> QuerySet:
-    #     return super().get_queryset(request).filter(bank_entry__isnull = False)
+    def type(self,obj) : 
+        return obj.bank_entry.type
+    
+    def get_queryset(self, request: HttpRequest) -> QuerySet:
+        return super().get_queryset(request).filter(bank_entry__isnull = False)
     
     @admin.action(description="Push Collection")
     def push_collection(self, request, queryset):
