@@ -1191,7 +1191,7 @@ class WholeSalePrintAdmin(PrintAdmin) :
 
 class BillDeliveryAdmin(CustomAdminModel) : 
     
-    list_display = ["bill_id","party","vehicle_id","loading_time","delivered","delivered_time","is_loading_sheet","bill_date"]
+    list_display = ["bill_id","party","vehicle_id","loading_time","delivered","delivered_time","is_loading_sheet","bill_date","beat"]
     list_filter = ["vehicle_id","loading_time","delivered_time",
                    create_simple_admin_list_filter("Beat","beat",{
                        "RETAIL" : lambda qs : qs.exclude(bill__beat__contains = "WHOLESALE") ,
@@ -1207,6 +1207,9 @@ class BillDeliveryAdmin(CustomAdminModel) :
     def party(self,obj) : 
         return obj.bill.party.name
 
+    def beat(self,obj) : 
+        return obj.bill.beat
+    
     @admin.display(boolean=True,description="LS")
     def is_loading_sheet(self,obj) : 
         return not (obj.loading_sheet is None)
