@@ -42,7 +42,7 @@
     </div>
 
     <!-- Finish Button -->
-    <div class="w-full max-w-lg mb-5 mt-5 {% if type == "delivery_success" %} hidden {% endif %}">
+    <div class="w-full max-w-lg mb-5 mt-5 ">
         <button id="finish-btn"
                 class="w-full bg-gray-700 text-white py-3 rounded-md text-lg font-bold hover:bg-gray-800 focus:ring-2 focus:ring-gray-400 focus:outline-none">
             Finish
@@ -82,10 +82,18 @@
                 <h3 class="text-2xl font-bold text-blue-500">Scanned Details</h3>
             </div>
             <div class="mb-6 text-left">
+                {% if type == "loading" %}
                 <p class="text-lg font-semibold text-gray-700">Total Items: <span id="total-count" class="text-blue-500"></span></p>
                 <p class="text-lg font-semibold text-gray-700">Bills: <span id="bill-count" class="text-blue-500"></span></p>
                 <p class="text-lg font-semibold text-gray-700">Loading Sheets: <span id="ls-count" class="text-green-500"></span></p>
                 <p class="text-lg font-semibold text-red-700">Missing Bills: <span id="missing-count" class="text-black-500"></span></p>
+                {% endif %}
+                {% if type == "delivery_success" %}
+                <p class="text-lg font-semibold text-gray-700">Loading Date: <span id="loading-date" class="text-blue-500"></span></p>
+                <p class="text-lg font-semibold text-gray-700">Loaded Bills: <span id="loading-count" class="text-blue-500"></span></p>
+                <p class="text-lg font-semibold text-gray-700">Delivered Bills: <span id="delivery-count" class="text-green-500"></span></p>
+                <p class="text-lg font-semibold text-red-700">Missing Bills: <span id="missing-count" class="text-black-500"></span></p>
+                {% endif %}
             </div>
             <div class="overflow-y-auto max-h-[70vh] border-t pt-4">
                 <table class="w-full text-left border-collapse">
@@ -171,7 +179,21 @@
 
         document.getElementById('finish-btn').addEventListener('click', () => {
             scanning = false;
-            document.getElementById('count-popup').classList.remove('hidden');
+            {% if type == "loading" %}
+                document.getElementById('count-popup').classList.remove('hidden');
+            {% elif type == "delivery_success" %}
+                    fetch(`/get_bill_in?vehicle={{ selected_vehicle }}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        document.getElementById('loading-date').innerText = data.loading_date;
+                        document.getElementById('loading-count').innerText = data.loading_count ;
+                        document.getElementById('delivery-count').innerText = data.delivery_count ;
+                        document.getElementById('missing-count').innerText = data.missing_count ;
+                        showFullPagePopup(data);
+                    })
+                    .catch(error => console.error('Error:', error));        
+            {% else %}
+            {% endif %}
         });
 
         document.getElementById('close-count-popup-btn').addEventListener('click', () => {
@@ -182,7 +204,6 @@
 
         document.getElementById('check-count-btn').addEventListener('click', () => {
             const enteredCount = parseInt(document.getElementById('entered-count').value);
-            const vehicleName = "{{ selected_vehicle }}";
 
             if (!enteredCount) {
                 alert("Please enter a valid count.");
@@ -191,24 +212,26 @@
 
             document.getElementById('count-popup').classList.add('hidden');
 
-            fetch(`/get_bill_out?vehicle=${vehicleName}`)
+            fetch(`/get_bill_out?vehicle={{ selected_vehicle }}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.total_count > enteredCount) {
                         alert(` Recount Properly \n Total Scanned Bills : ${data.total_count} \n Entered Count : ${enteredCount}` );
                     } else {
-                        data.entered_count = enteredCount ; 
+                        document.getElementById('total-count').innerText = data.total_count;
+                        document.getElementById('bill-count').innerText = data.bill_count;
+                        document.getElementById('ls-count').innerText = data.loading_sheet_count;
+                        document.getElementById('missing-count').innerText = enteredCount - data.total_count;
                         showFullPagePopup(data);
                     }
                 })
                 .catch(error => console.error('Error:', error));
-        });
+        
+            });
 
-        function showFullPagePopup(data) {
-            document.getElementById('total-count').innerText = data.total_count;
-            document.getElementById('bill-count').innerText = data.bill_count;
-            document.getElementById('ls-count').innerText = data.loading_sheet_count;
-            document.getElementById('missing-count').innerText = data.entered_count - data.total_count;
+        
+            function showFullPagePopup(data) {
+            
             const detailsTable = document.getElementById('details-table');
             detailsTable.innerHTML = '';
 
