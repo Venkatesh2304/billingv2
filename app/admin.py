@@ -116,7 +116,7 @@ def result_list_tag(parser, token):
         takes_context=False,
     )
 
-def create_simple_admin_list_filter(title_name,paramter,lookups: dict[str,Callable] = {}) :
+def create_simple_admin_list_filter(title_name,paramter,lookups: dict[str,Callable] = {},allow_all = True) :
 
     class CustomListFilter(admin.SimpleListFilter) : #admin.SimpleListFilter):
         title = title_name
@@ -134,6 +134,12 @@ def create_simple_admin_list_filter(title_name,paramter,lookups: dict[str,Callab
         def choices(self, changelist):
             add_facets = changelist.add_facets
             facet_counts = self.get_facet_queryset(changelist) if add_facets else None
+            if allow_all : 
+                yield {
+                "selected": self.value() is None,
+                "query_string": changelist.get_query_string(remove=[self.parameter_name]),
+                "display": _("All"),
+                }
             for i, (lookup, title) in enumerate(self.lookup_choices):
                 if add_facets:
                     if (count := facet_counts.get(f"{i}__c", -1)) != -1:
@@ -1276,7 +1282,7 @@ class ChequeDepositAdmin(CustomAdminModel) :
     list_filter = [ create_simple_admin_list_filter("Can Be Deposited Today?","cheque_date",{
                        "Yes" : lambda qs : qs.filter(cheque_date__lte = datetime.date.today(),deposit_date__isnull=True) ,
                        "No" : lambda qs : qs.exclude(cheque_date__lte = datetime.date.today(),deposit_date__isnull=True),
-                       })  ] #"deposit_date"
+                       }, allow_all= False)  ] 
     
 
     def get_actions(self,request) : 
@@ -1501,18 +1507,25 @@ class BankStatementAdmin(CustomAdminModel) :
 
                 if bank_name == "kvb" : 
                     bank_index = 1
-                    df = pd.read_csv(excel_file , skiprows=13 , sep=",")
+                    df = pd.read_csv(excel_file , skiprows=0 , sep="," , names =[1,2,3,4,5,6,7,8] , header = None)
+                    skiprows = -1 
+                    for i in range(0,20) : 
+                        if df.iloc[i][1] == "\tTransaction Date" : 
+                            skiprows = i 
+                            break
+                    df.columns = df.iloc[skiprows]
+                    df = df.iloc[skiprows+1:]
                     df = df.rename(columns={"\tTransaction Date":"date","Credit":"amt","Cheque No.":"ref","Description":"desc"})
                     df["date"] = pd.to_datetime(df["date"],format='%d-%m-%Y %H:%M:%S')
                     df = df.sort_values("date")
                     df["ref"] = df["ref"].astype(str).str.split(".").str[0]
 
-                df["idx"] = df.groupby("date").cumcount() + 1 
+                df["idx"] = df.groupby(df["date"].dt.date).cumcount() + 1 
                 df = df[["date","ref","desc","amt","idx"]]
                 df["bank"] = bank_name 
                 df["id"] = (lambda date, number: (( 10*bank_index + (date.dt.year - 2020)) * 12 * 31  + date.dt.month * 31  + date.dt.day) * 100 + number)(df.date,df.idx).astype(str)
-                # df["id"] = df["date"].dt.strftime("%d%m%Y") + df['idx'].astype(str)
                 df["date"] = df["date"].dt.date
+                df = df[df.amt != ""][df.amt.notna()]
                 df.amt = df.amt.astype(str).str.replace(",","").apply(lambda x  : float(x.strip()) if x.strip() else 0)
                 bulk_raw_insert("bankstatement",df,ignore=True)
                 messages.success(request, "Statement successfully uploaded")
