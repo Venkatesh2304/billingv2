@@ -43,9 +43,10 @@ function fetchStaticAmt(id,i) {
         .then(response => response.json())
         .then(data => {
             document.querySelectorAll('.field-balance')[i].innerText = data.balance ;
-
-            const amt_input = document.getElementById("collection-group").querySelectorAll('.field-amt')[i]
-            if (amt_input.value == "") { amt_input.querySelector("input").value = parseInt(data.balance) ; }
+            const amt_input = document.getElementById("collection-group").querySelectorAll('.field-amt')[i].querySelector("input")
+            console.log(amt_input.value)
+            if (amt_input.value == "") { amt_input.value = parseInt(data.balance) ; }
+            console.log(amt_input.value)
             document.getElementById("collection-group").querySelectorAll('.field-party')[i].innerText = data.party ;
         })
         .catch(error => console.error('Error fetching amt:', error));
