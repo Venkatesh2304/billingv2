@@ -1445,6 +1445,9 @@ class BankStatementAdmin(CustomAdminModel) :
     
     inlines = [NeftCollectionInline]
 
+    def get_inlines(self, request, obj):
+        return self.inlines
+
     def has_change_permission(self, request, obj=None):
         if obj and (obj.collection.filter(pushed = True).count()) : 
             return False 

@@ -25,24 +25,27 @@ function addEventListeners() {
     });
 }
 
-function fetchAmt(id,i) {
-    fetch(`${GET_OUTSTANDING_URL}/${id}/`)
-        .then(response => response.json())
-        .then(data => {
-            console.log( data.party,  data.balance )
-            document.querySelectorAll('input[name$="balance"]')[i].value = data.balance ;
-            document.getElementById("collection-group").querySelectorAll('input[name$="party"]')[i].value = data.party ;
-            document.getElementById("collection-group").querySelectorAll('input[name$="amt"]')[i].value = data.balance ;
-        })
-        .catch(error => console.error('Error fetching amt:', error));
-}
+// Deprcated function  , we are using only static mat fetch 
+// function fetchAmt(id,i) {
+//     fetch(`${GET_OUTSTANDING_URL}/${id}/`)
+//         .then(response => response.json())
+//         .then(data => {
+//             console.log( data.party,  data.balance )
+//             document.querySelectorAll('input[name$="balance"]')[i].value = data.balance ;
+//             document.getElementById("collection-group").querySelectorAll('input[name$="party"]')[i].value = data.party ;
+//             document.getElementById("collection-group").querySelectorAll('input[name$="amt"]')[i].value = data.balance ;
+//         })
+//         .catch(error => console.error('Error fetching amt:', error));
+// }
 
 function fetchStaticAmt(id,i) {
     fetch(`${GET_OUTSTANDING_URL}/${id}/`)
         .then(response => response.json())
         .then(data => {
             document.querySelectorAll('.field-balance')[i].innerText = data.balance ;
-            document.getElementById("collection-group").querySelectorAll('.field-amt')[i].querySelector("input").value = parseInt(data.balance) ;
+
+            const amt_input = document.getElementById("collection-group").querySelectorAll('.field-amt')[i]
+            if (amt_input.value == "") { amt_input.querySelector("input").value = parseInt(data.balance) ; }
             document.getElementById("collection-group").querySelectorAll('.field-party')[i].innerText = data.party ;
         })
         .catch(error => console.error('Error fetching amt:', error));
