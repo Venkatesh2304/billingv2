@@ -1257,8 +1257,8 @@ class ChequeDepositAdmin(CustomAdminModel) :
     readonly_fields = ["deposit_date"]
     actions = ['generate_deposit_slip']
     list_filter = [ create_simple_admin_list_filter("Can Be Deposited Today?","cheque_date",{
-                       "Yes" : lambda qs : qs.filter(cheque_date__lte = datetime.date.today(),deposit__date__isnull=True) ,
-                       "No" : lambda qs : qs.exclude(cheque_date__lte = datetime.date.today(),deposit__date__isnull=True),
+                       "Yes" : lambda qs : qs.filter(cheque_date__lte = datetime.date.today(),deposit_date__isnull=True) ,
+                       "No" : lambda qs : qs.exclude(cheque_date__lte = datetime.date.today(),deposit_date__isnull=True),
                        })  ] #"deposit_date"
     
 
