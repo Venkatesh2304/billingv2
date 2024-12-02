@@ -194,11 +194,7 @@
             fetch(`/get_bill_out?vehicle=${vehicleName}`)
                 .then(response => response.json())
                 .then(data => {
-                    if (data.total_count === enteredCount) {
-                        showPopup("<span class='text-green-500'> All Bills Scanned. Redirecting...</span>");
-                        setTimeout(() => window.location.href = "/vehicle_selection", 3000);
-                    }
-                    else if (data.total_count > enteredCount) {
+                    if (data.total_count > enteredCount) {
                         alert(` Recount Properly \n Total Scanned Bills : ${data.total_count} \n Entered Count : ${enteredCount}` );
                     } else {
                         data.entered_count = enteredCount ; 
@@ -215,7 +211,7 @@
             document.getElementById('missing-count').innerText = data.entered_count - data.total_count;
             const detailsTable = document.getElementById('details-table');
             detailsTable.innerHTML = '';
-            {% comment %} window.alert(bills) {% endcomment %}
+
             // Add Bills
             data.bills.forEach(bill => {
                 detailsTable.innerHTML += `<tr>
