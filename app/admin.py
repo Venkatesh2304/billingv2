@@ -1256,10 +1256,10 @@ class ChequeDepositAdmin(CustomAdminModel) :
     inlines = [BankCollectionInline]
     readonly_fields = ["deposit_date"]
     actions = ['generate_deposit_slip']
-    list_filter = ["deposit_date", create_simple_admin_list_filter("Can Be Deposited Today?","cheque_date",{
-                       "Yes" : lambda qs : qs.filter(cheque_date__lte = datetime.date.today()) ,
-                       "No" : lambda qs : qs.filter(cheque_date__gte = datetime.date.today()) ,
-                       })]
+    list_filter = [ create_simple_admin_list_filter("Can Be Deposited Today?","cheque_date",{
+                       "Yes" : lambda qs : qs.filter(cheque_date__lte = datetime.date.today(),deposit__date__isnull=True) ,
+                       "No" : lambda qs : qs.exclude(cheque_date__lte = datetime.date.today(),deposit__date__isnull=True),
+                       })  ] #"deposit_date"
     
 
     def get_actions(self,request) : 
