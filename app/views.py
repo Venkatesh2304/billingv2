@@ -148,8 +148,8 @@ def get_bill_in(request,delivery_date = datetime.datetime.now().replace(hour=0,m
     sorted_all_bills = [ (bill,party) for time,bill,party in sorted_all_bills ] 
     delivered_bills = sorted_all_bills
     
-    print( loaded_bills )
-    print( delivered_bills )
+    print( "l", loaded_bills )
+    print( "d" ,. delivered_bills )
     missing_bills = list(set(loaded_bills) - set(delivered_bills))
     return JsonResponse({ "bills" : missing_bills, "loading_date": last_loading_date.strftime("%d %b %Y") ,
                             "missing_count":len(missing_bills) , "loading_count":len(loaded_bills),"delivery_count":len(delivered_bills)})
