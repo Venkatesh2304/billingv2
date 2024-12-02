@@ -131,6 +131,23 @@ def create_simple_admin_list_filter(title_name,paramter,lookups: dict[str,Callab
                     return queryset_filter(queryset)
             return queryset
 
+        def choices(self, changelist):
+            add_facets = changelist.add_facets
+            facet_counts = self.get_facet_queryset(changelist) if add_facets else None
+            for i, (lookup, title) in enumerate(self.lookup_choices):
+                if add_facets:
+                    if (count := facet_counts.get(f"{i}__c", -1)) != -1:
+                        title = f"{title} ({count})"
+                    else:
+                        title = f"{title} (-)"
+                yield {
+                    "selected": self.value() == str(lookup),
+                    "query_string": changelist.get_query_string(
+                        {self.parameter_name: lookup}
+                    ),
+                    "display": title,
+                }
+                
     return CustomListFilter   
 
 
@@ -1839,7 +1856,7 @@ class MyAdminSite(admin.AdminSite):
                 "Pending Sheet": query_url("admin:app_salesmanpendingsheet_changelist" , {"date":"Today"}),
             },
             "Cheque" : {
-                "Cheque Deposit": query_url("admin:app_chequedeposit_changelist",{"cheque_date":"Yes"}), #"deposit_date__isnull":"True","
+                "Cheque Deposit": reverse("admin:app_chequedeposit_changelist"),
                 "Bank Statement": reverse("admin:app_bankstatement_changelist"),
                 "Push To Ikea" : query_url("admin:app_bankcollection_changelist" , {"pushed":False})
             },
