@@ -126,7 +126,7 @@ def vehicle_selection(request) :
 
 def get_bill_out(request): 
     vehicle = request.GET.get('vehicle')
-    qs = models.Bill.objects.filter(loading_time__gte = datetime.datetime.now() - datetime.timedelta(weeks=10),
+    qs = models.Bill.objects.filter(loading_time__gte = datetime.datetime.now() - datetime.timedelta(hours=1),
                                 vehicle = vehicle)
     
     bills = list(qs.filter(loading_sheet__isnull=True).values_list("loading_time","bill_id","bill__party__name"))
