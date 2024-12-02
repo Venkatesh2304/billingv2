@@ -128,7 +128,6 @@ def get_bill_out(request):
     vehicle = request.GET.get('vehicle')
     qs = models.Bill.objects.filter(loading_time__gte = datetime.datetime.now() - datetime.timedelta(hours=1),
                                 vehicle = vehicle)
-    
     bills = list(qs.filter(loading_sheet__isnull=True).values_list("loading_time","bill_id","bill__party__name"))
     ls = list(set(qs.filter(loading_sheet__isnull=False).values_list("loading_time","loading_sheet","loading_sheet__party")))
     sorted_all_bills = sorted(bills + ls, key=lambda x: x[0], reverse=True)

@@ -1254,7 +1254,7 @@ class ChequeDepositAdmin(CustomAdminModel) :
     list_display = ["cheque_date","cheque_no","party","amt","bank","deposit_date"]
     autocomplete_fields = ["party"]
     inlines = [BankCollectionInline]
-    readonly_fields = ["deposit_date"]
+    # readonly_fields = ["deposit_date"]
     actions = ['generate_deposit_slip']
 
     def get_actions(self,request) : 
@@ -1274,7 +1274,8 @@ class ChequeDepositAdmin(CustomAdminModel) :
     def generate_deposit_slip(self, request, queryset):
         # Create the deposit slip data
         data = [
-            {'S.NO': idx + 1, 'NAME': cheque.party.name, 'BANK': cheque.bank, 'CHEQUE NO': cheque.cheque_no, 'AMOUNT': cheque.amt}
+            {'S.NO': idx + 1, 'NAME': cheque.party.name, 'BANK': cheque.bank, 'CHEQUE NO': cheque.cheque_no, 'AMOUNT': cheque.amt , 
+             'BILLS' : ','.join( cheque.collection.all().values_list("bill__inum",flat=True) ) }
             for idx, cheque in enumerate(queryset)
         ]
 
@@ -1322,7 +1323,7 @@ class ChequeDepositAdmin(CustomAdminModel) :
             writer.sheets['DEPOSIT SLIP'] = worksheet
 
         # Update the queryset to set the deposit date
-        queryset.update(deposit_date=datetime.date.today())
+        queryset.filter(deposit_date__isnull = True).update(deposit_date=datetime.date(2024,11,29)) #datetime.date.today())
 
         return response
 
