@@ -136,7 +136,7 @@ def get_bill_out(request,loading_date = datetime.date.today()):
 
 def get_bill_in(request,delivery_date = datetime.date.today()): 
     vehicle = request.GET.get('vehicle')
-    last_loading_date = models.Bill.objects.filter(loading_time__date__lte = delivery_date , vehicle = vehicle).order_by("-loading_time").first().loading_time
+    last_loading_date = models.Bill.objects.filter(loading_time__date__lt = delivery_date , vehicle = vehicle).order_by("-loading_time").first().loading_time
     bill_out_data = json.loads( get_bill_out(request,last_loading_date).content.decode('utf-8') )
     loaded_bills = [ tuple(i) for i in bill_out_data["bills"] ] 
 
