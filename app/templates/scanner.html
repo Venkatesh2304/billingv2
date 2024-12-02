@@ -91,7 +91,8 @@
                 {% if type == "delivery_success" %}
                 <p class="text-lg font-semibold text-gray-700">Loading Date: <span id="loading-date" class="text-blue-500"></span></p>
                 <p class="text-lg font-semibold text-gray-700">Loaded Bills: <span id="loading-count" class="text-blue-500"></span></p>
-                <p class="text-lg font-semibold text-gray-700">Delivered Bills: <span id="delivery-count" class="text-green-500"></span></p>
+                <p class="text-lg font-semibold text-gray-700">Delivered Bills: <span id="delivery-count-1" class="text-green-500"></span></p>
+                <p class="text-lg font-semibold text-gray-700">Other Day Delivery Bills: <span id="delivery-count-2" class="text-green-500"></span></p>
                 <p class="text-lg font-semibold text-red-700">Missing Bills: <span id="missing-count" class="text-black-500"></span></p>
                 {% endif %}
             </div>
@@ -187,7 +188,8 @@
                     .then(data => {
                         document.getElementById('loading-date').innerText = data.loading_date;
                         document.getElementById('loading-count').innerText = data.loading_count ;
-                        document.getElementById('delivery-count').innerText = data.delivery_count ;
+                        document.getElementById('delivery-count-1').innerText = data.delivery_previous_day_count ;
+                        document.getElementById('delivery-count-2').innerText = data.delivery_other_day_count ;
                         document.getElementById('missing-count').innerText = data.missing_count ;
                         showFullPagePopup(data);
                     })
