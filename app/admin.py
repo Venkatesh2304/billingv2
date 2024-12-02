@@ -1443,10 +1443,12 @@ class BankStatementAdmin(CustomAdminModel) :
         model = models.Collection
         verbose_name_plural = "IKEA Pushed Collection"
     
-    inlines = [NeftCollectionInline]
 
-    def get_inlines(self, request, obj):
-        return self.inlines
+    def get_inlines(self, request, obj = None):
+        if self.has_change_permission(request,obj) : 
+            return [self.NeftCollectionInline]
+        else : 
+            return [self.NeftCollectionInline,self.IkeaCollectionInline]
 
     def has_change_permission(self, request, obj=None):
         if obj and (obj.collection.filter(pushed = True).count()) : 
