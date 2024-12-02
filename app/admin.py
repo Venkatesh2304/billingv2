@@ -1839,7 +1839,7 @@ class MyAdminSite(admin.AdminSite):
                 "Pending Sheet": query_url("admin:app_salesmanpendingsheet_changelist" , {"date":"Today"}),
             },
             "Cheque" : {
-                "Cheque Deposit": query_url("admin:app_chequedeposit_changelist",{"deposit_date__isnull":"True","cheque_date":"Yes"}),
+                "Cheque Deposit": query_url("admin:app_chequedeposit_changelist",{"cheque_date":"Yes"}), #"deposit_date__isnull":"True","
                 "Bank Statement": reverse("admin:app_bankstatement_changelist"),
                 "Push To Ikea" : query_url("admin:app_bankcollection_changelist" , {"pushed":False})
             },
