@@ -1424,6 +1424,7 @@ class BankStatementAdmin(CustomAdminModel) :
     list_filter = ["date"]
     # search_fields = ["amt","desc"]
     list_display_links = ["date","amt"]
+    ordering = ["-date"]
     permissions = [Permission.change,Permission.delete]
     
     @admin.display(boolean=True)
