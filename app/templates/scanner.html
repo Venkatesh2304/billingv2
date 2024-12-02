@@ -5,87 +5,121 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aztec Code Scanner</title>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 20px;
-        }
-        #scanner {
-            width: 100%;
-            height: auto;
-        }
-        h1, h2 {
-            margin: 20px 0;
-        }
-        #result {
-            font-size: 1.5em;
-            margin-top: 20px;
-        }
-        #record-section {
-            display: none;
-            margin-top: 20px;
-        }
-        #record-btn, #stop-btn {
-            margin: 10px;
-            padding: 10px 20px;
-            font-size: 1em;
-        }
-    </style>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <h1>
-    {% if type == "loading" %}
-        Outgoing Bills to Delivery
-    {% elif type == "delivery_success" %}
-        Delivery Bills to Godown
-    {% else %}
-        Failed Delivery (Return)
-    {% endif %}
-    </h1>
-
-    <video id="scanner" width="100%" height="auto"></video>
-    <h2 id="result">Scan</h2>
-
-    <!-- Manual input for cases when Aztec code is not detected -->
-    <div style="margin-top: 20px;">
-        <input type="text" id="manual-code" placeholder="Enter Bill Number" />
-        <button onclick="submitManualCode()">Submit</button>
+<body class="bg-gray-100 min-h-screen flex flex-col justify-center items-center pt-0 p-4">
+    <!-- Header Section -->
+    <div class="bg-white shadow-md rounded-md w-full max-w-lg text-center">
+        <h1 class="text-xl font-bold text-blue-600">
+            {% if type == "loading" %}
+                Outgoing Bills to Delivery
+            {% elif type == "delivery_success" %}
+                Delivery Bills to Godown
+            {% else %}
+                Failed Delivery (Return)
+            {% endif %}
+        </h1>
+        <h2 class="text-xl font-bold text-green-600 mb-2">{{ selected_vehicle }}</h2>
     </div>
 
-    <audio id="audio-playback" controls style="display: none;"></audio>
-
-    <!-- Voice recording section, shown only for failed deliveries -->
-    <div id="record-section">
-        <button id="record-btn">Record Voice Note</button>
-        <button id="stop-btn" style="display:none;">Stop Recording</button>
+    <!-- Scanner Section -->
+    <div id="scanner-section" class="bg-white shadow-md rounded-md p-4 w-full max-w-lg mt-4">
+        <video id="scanner" class="w-full rounded-md border border-gray-300"></video>
+        <h2 id="result" class="text-lg font-medium text-gray-800 mt-4"></h2>
     </div>
 
-    <audio id="notification-sound" src="/static/notification.mp3" preload="auto"></audio>
+    <!-- Manual Input Section -->
+    <div id="manual-input-section" class="bg-white shadow-md rounded-md p-4 w-full max-w-lg mt-4">
+        <label for="manual-code" class="block text-gray-700 font-medium mb-2">Manual Bill Entry</label>
+        <div class="flex items-center space-x-2">
+            <input type="text" id="manual-code" placeholder="Enter Bill Number"
+                   class="flex-1 p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-400 focus:outline-none">
+            <button id="manual-submit-btn"
+                    class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:ring-2 focus:ring-blue-400 focus:outline-none">
+                Load Bill
+            </button>
+        </div>
+    </div>
+
+    <!-- Finish Button -->
+    <div class="w-full max-w-lg mb-5 mt-5 {% if type == "delivery_success" %} hidden {% endif %}">
+        <button id="finish-btn"
+                class="w-full bg-gray-700 text-white py-3 rounded-md text-lg font-bold hover:bg-gray-800 focus:ring-2 focus:ring-gray-400 focus:outline-none">
+            Finish
+        </button>
+    </div>
+
+    <!-- Popups -->
+    <div id="popup-modal" class="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full text-center">
+            <p id="popup-content" class="text-xl font-bold text-gray-800"></p>
+        </div>
+    </div>
+
+    <div id="count-popup" class="fixed inset-0 bg-gray-800 bg-opacity-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full relative">
+            <button id="close-count-popup-btn"
+                    class="absolute top-2 right-2 bg-gray-300 rounded-full w-8 h-8 flex items-center justify-center hover:bg-gray-400 focus:outline-none">
+                ×
+            </button>
+            <h3 class="text-lg font-bold text-gray-800 mb-4">Verify Bill Count</h3>
+            <input type="number" id="entered-count" placeholder="Enter Total Bill Count"
+                   class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-400 focus:outline-none mb-4">
+            <button id="check-count-btn"
+                    class="w-full bg-blue-500 text-white py-2 rounded-md hover:bg-blue-600 focus:ring-2 focus:ring-blue-400 focus:outline-none mb-2">
+                Check
+            </button>
+        </div>
+    </div>
+
+    <div id="full-page-popup" class="fixed inset-0 bg-gray-900 bg-opacity-90 hidden overflow-y-auto">
+        <div class="max-w-4xl mx-auto p-6 relative bg-white rounded-lg shadow-lg">
+            <button id="close-full-popup-btn"
+                    class="absolute top-2 right-2 bg-red-500  rounded-full w-8 h-8 flex items-center justify-center focus:outline-none">
+               <span class="text-white-500"> × </span>
+            </button>
+            <div class="text-center mb-6">
+                <h3 class="text-2xl font-bold text-blue-500">Scanned Details</h3>
+            </div>
+            <div class="mb-6 text-left">
+                <p class="text-lg font-semibold text-gray-700">Total Items: <span id="total-count" class="text-blue-500"></span></p>
+                <p class="text-lg font-semibold text-gray-700">Bills: <span id="bill-count" class="text-blue-500"></span></p>
+                <p class="text-lg font-semibold text-gray-700">Loading Sheets: <span id="ls-count" class="text-green-500"></span></p>
+                <p class="text-lg font-semibold text-red-700">Missing Bills: <span id="missing-count" class="text-black-500"></span></p>
+            </div>
+            <div class="overflow-y-auto max-h-[70vh] border-t pt-4">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr>
+                        </tr>
+                    </thead>
+                    <tbody id="details-table">
+                        <!-- Bills and Loading Sheets will be injected here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Hidden Audio Element -->
+    <audio id="notification-sound" src="/static/notification.mp3" preload="auto" class="hidden"></audio>
 
     <script>
+        {% if type == "loading" %}
+        window.alert(" IMPORTANT:\n After Scanning all the Bills \n Click Finish Button to Verify the Count.");
+        {% endif %}
         const codeReader = new ZXing.BrowserMultiFormatReader();
         let scanning = true;
-        let recorder, audioBlob, scannedBarcode;
 
         function startScanning(selectedDeviceId) {
             codeReader.decodeFromVideoDevice(selectedDeviceId, 'scanner', (result, err) => {
                 if (result && scanning) {
-                    scanning = false;  // Stop scanning once a barcode is detected
-                    scannedBarcode = result.text;
+                    scanning = false;
+                    const scannedBarcode = result.text;
                     document.getElementById('result').innerText = 'Scanning: ' + scannedBarcode;
-
-                    // Stop scanning
                     codeReader.reset();
-
-                    {% if type == "delivery_failed" %}
-                        // Show recording section and start recording process
-                        document.getElementById('record-section').style.display = 'block';
-                        setupRecording();
-                    {% else %}
-                        // Directly send POST request if no recording is required
-                        sendPostRequest(scannedBarcode);
-                    {% endif %}
+                    sendPostRequest(String(scannedBarcode));
                 }
 
                 if (err && scanning) {
@@ -94,99 +128,110 @@
             });
         }
 
-        function setupRecording() {
-            const recordBtn = document.getElementById('record-btn');
-            const stopBtn = document.getElementById('stop-btn');
-            const audioPlayback = document.getElementById('audio-playback');
-
-            recordBtn.addEventListener('click', async () => {
-                if (!navigator.mediaDevices) return alert('Audio recording is not supported in this browser.');
-                
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                recorder = new MediaRecorder(stream);
-                let chunks = [];
-        
-                recorder.ondataavailable = event => chunks.push(event.data);
-                recorder.onstop = () => {
-                    audioBlob = new Blob(chunks, { type: 'audio/ogg; codecs=opus' });
-                    audioPlayback.src = URL.createObjectURL(audioBlob);
-                    audioPlayback.style.display = 'block';
-                    sendPostRequest(scannedBarcode);  // Send POST request after recording is complete
-                };
-        
-                recorder.start();
-                recordBtn.style.display = 'none';
-                stopBtn.style.display = 'inline';
-            });
-        
-            stopBtn.addEventListener('click', () => {
-                recorder.stop();  // Stop recording
-                recordBtn.style.display = 'inline';
-                stopBtn.style.display = 'none';
-            });
-        }
-
-        // Function to send POST request with the scanned or manually entered code
-        function sendPostRequest(code) {
-            const data = {
-                inum: code,
-                vehicle: "{{ selected_vehicle }}",
-                type: "{{ type }}"
-            };
-            const formData = new FormData();
-            formData.append('data', JSON.stringify(data));
-
-            if (audioBlob) {
-                formData.append('audio', audioBlob, 'failure_note.ogg');
-            }
-
-            fetch(`/get_bill_data/`, {
-                method: 'POST',
-                headers: { 'X-CSRFToken': '{{ csrf_token }}' },
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => handleResponse(data))
-            .catch(error => handleError(error));
-        }
-
-        function handleResponse(data) {
-            const notificationSound = document.getElementById('notification-sound');
-            const audioPlayback = document.getElementById('audio-playback');
-            
-            if (data.data) {
-                notificationSound.play();
-                document.getElementById('result').innerText = `${data.data}`;
-                
-                setTimeout(() => {
-                    document.getElementById('result').innerText = 'Scan';
-                    document.getElementById('record-section').style.display = 'none';
-                    audioPlayback.style.display = 'none';
-                    audioPlayback.src = '';
-                    scanning = true;
-                    startScanning();
-                }, 2000);
-            } else {
-                document.getElementById('result').innerText = 'Bill not found';
-                scanning = true;
-                startScanning();
-            }
-        }
-
-        function handleError(error) {
-            console.error('Error fetching bill:', error);
-            scanning = true;
-        }
-
-        // Manual code submission handler
-        function submitManualCode() {
+        document.getElementById('manual-submit-btn').addEventListener('click', () => {
             const manualCode = document.getElementById('manual-code').value;
             if (manualCode) {
                 sendPostRequest(manualCode);
             } else {
                 alert("Please enter a code to submit.");
             }
+        });
+
+        function sendPostRequest(code) {
+            const data = { inum: code, vehicle: "{{ selected_vehicle }}", type: "{{ type }}" };
+            const formData = new FormData();
+            formData.append('data', JSON.stringify(data));
+           
+            fetch(`/get_bill_data/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => { 
+                const notificationSound = document.getElementById('notification-sound');
+                notificationSound.play();
+                showPopup(data.data);
+                setTimeout(() => {
+                    document.getElementById('popup-modal').classList.add('hidden');
+                    scanning = true;
+                    startScanning();
+                }, 2000);
+            })
+            .catch(error => console.error('Error:', error));
         }
+
+        function showPopup(content) {
+            const popupModal = document.getElementById('popup-modal');
+            const popupContent = document.getElementById('popup-content');
+            popupContent.innerHTML = content.replace(/\n/g, '<br>'); // Add line breaks
+            popupModal.classList.remove('hidden');
+            document.getElementById('result').innerText = "";
+        }
+
+        document.getElementById('finish-btn').addEventListener('click', () => {
+            scanning = false;
+            document.getElementById('count-popup').classList.remove('hidden');
+        });
+
+        document.getElementById('close-count-popup-btn').addEventListener('click', () => {
+            document.getElementById('count-popup').classList.add('hidden');
+            scanning = true;
+            startScanning();
+        });
+
+        document.getElementById('check-count-btn').addEventListener('click', () => {
+            const enteredCount = parseInt(document.getElementById('entered-count').value);
+            const vehicleName = "{{ selected_vehicle }}";
+
+            if (!enteredCount) {
+                alert("Please enter a valid count.");
+                return;
+            }
+
+            document.getElementById('count-popup').classList.add('hidden');
+
+            fetch(`/get_bill_out?vehicle=${vehicleName}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.total_count === enteredCount) {
+                        showPopup("<span class='text-green-500'> All Bills Scanned. Redirecting...</span>");
+                        setTimeout(() => window.location.href = "/vehicle_selection", 3000);
+                    }
+                    else if (data.total_count > enteredCount) {
+                        alert(` Recount Properly \n Total Scanned Bills : ${data.total_count} \n Entered Count : ${enteredCount}` );
+                    } else {
+                        data.entered_count = enteredCount ; 
+                        showFullPagePopup(data);
+                    }
+                })
+                .catch(error => console.error('Error:', error));
+        });
+
+        function showFullPagePopup(data) {
+            document.getElementById('total-count').innerText = data.total_count;
+            document.getElementById('bill-count').innerText = data.bill_count;
+            document.getElementById('ls-count').innerText = data.loading_sheet_count;
+            document.getElementById('missing-count').innerText = data.entered_count - data.total_count;
+            const detailsTable = document.getElementById('details-table');
+            detailsTable.innerHTML = '';
+            {% comment %} window.alert(bills) {% endcomment %}
+            // Add Bills
+            data.bills.forEach(bill => {
+                detailsTable.innerHTML += `<tr>
+                    <td class="py-2 text-lg text-${ bill[0].startsWith('SM') ? 'green' : 'blue' }-500 font-bold border-b pr-4">${bill[0]}</td>
+                    <td class="py-2 text-lg text-black-500 font-bold border-b overflow-x-auto">${bill[1]}</td>
+                </tr>`;
+            });
+            document.getElementById('full-page-popup').classList.remove('hidden');
+        }
+
+
+        document.getElementById('close-full-popup-btn').addEventListener('click', () => {
+            document.getElementById('full-page-popup').classList.add('hidden');
+            scanning = true;
+            startScanning();
+        });
 
         codeReader.listVideoInputDevices()
             .then(videoInputDevices => {

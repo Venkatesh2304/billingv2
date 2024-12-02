@@ -124,6 +124,20 @@ def vehicle_selection(request) :
     form = VehicleForm() 
     return render(request, 'vehicle_selection.html', {'form': form})
 
+def get_bill_out(request): 
+    vehicle = request.GET.get('vehicle')
+    qs = models.Bill.objects.filter(loading_time__gte = datetime.datetime.now() - datetime.timedelta(weeks=10),
+                                vehicle = vehicle)
+    
+    bills = list(qs.filter(loading_sheet__isnull=True).values_list("loading_time","bill_id","bill__party__name"))
+    ls = list(set(qs.filter(loading_sheet__isnull=False).values_list("loading_time","loading_sheet","loading_sheet__party")))
+    sorted_all_bills = sorted(bills + ls, key=lambda x: x[0], reverse=True)
+    sorted_all_bills = [ (bill,party) for time,bill,party in sorted_all_bills ] 
+    return JsonResponse({ "bills" : sorted_all_bills ,  
+                          "total_count":len(bills)+len(ls),"bill_count":len(bills),"loading_sheet_count":len(ls)})
+
+    
+
 def get_bill_data(request):
     if request.method == 'POST':
         data = request.POST.get('data')
