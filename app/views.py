@@ -124,9 +124,9 @@ def vehicle_selection(request) :
     form = VehicleForm() 
     return render(request, 'vehicle_selection.html', {'form': form})
 
-def get_bill_out(request,loading_date = datetime.datetime.now().replace(hour=0,minute=0)): 
+def get_bill_out(request,loading_date = datetime.date.today()): 
     vehicle = request.GET.get('vehicle')
-    qs = models.Bill.objects.filter(loading_time__gte = loading_date , vehicle = vehicle)
+    qs = models.Bill.objects.filter(loading_time__date = loading_date , vehicle = vehicle)
     bills = list(qs.filter(loading_sheet__isnull=True).values_list("loading_time","bill_id","bill__party__name"))
     ls = list(set(qs.filter(loading_sheet__isnull=False).values_list("loading_time","loading_sheet","loading_sheet__party")))
     sorted_all_bills = sorted(bills + ls, key=lambda x: x[0], reverse=True)
@@ -134,14 +134,14 @@ def get_bill_out(request,loading_date = datetime.datetime.now().replace(hour=0,m
     return JsonResponse({"bills" : sorted_all_bills ,  
                           "total_count":len(sorted_all_bills) ,"bill_count":len(bills),"loading_sheet_count":len(ls)})
 
-def get_bill_in(request,delivery_date = datetime.datetime.now().replace(hour=0,minute=0)): 
+def get_bill_in(request,delivery_date = datetime.date.today()): 
     vehicle = request.GET.get('vehicle')
-    last_loading_date = models.Bill.objects.filter(loading_time__lte = delivery_date , vehicle = vehicle).order_by("-loading_time").first().loading_time
+    last_loading_date = models.Bill.objects.filter(loading_time__date__lte = delivery_date , vehicle = vehicle).order_by("-loading_time").first().loading_time
     bill_out_data = json.loads( get_bill_out(request,last_loading_date).content.decode('utf-8') )
     loaded_bills = [ tuple(i) for i in bill_out_data["bills"] ] 
 
 
-    qs = models.Bill.objects.filter(delivered_time__gte =  delivery_date , vehicle = vehicle)
+    qs = models.Bill.objects.filter(delivered_time__date__gte =  delivery_date , vehicle = vehicle)
     bills = list(qs.filter(loading_sheet__isnull=True).values_list("loading_time","bill_id","bill__party__name"))
     ls = list(set(qs.filter(loading_sheet__isnull=False).values_list("loading_time","loading_sheet","loading_sheet__party")))
     sorted_all_bills = sorted(bills + ls, key=lambda x: x[0], reverse=True)
