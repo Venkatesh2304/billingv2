@@ -1256,7 +1256,8 @@ class ChequeDepositAdmin(CustomAdminModel) :
     inlines = [BankCollectionInline]
     # readonly_fields = ["deposit_date"]
     actions = ['generate_deposit_slip']
-
+    list_filter = ["deposit_date"]
+    
     def get_actions(self,request) : 
         actions = super().get_actions(request)
         if "delete_selected" in actions : actions.pop("delete_selected")
@@ -1323,7 +1324,7 @@ class ChequeDepositAdmin(CustomAdminModel) :
             writer.sheets['DEPOSIT SLIP'] = worksheet
 
         # Update the queryset to set the deposit date
-        queryset.filter(deposit_date__isnull = True).update(deposit_date=datetime.date(2024,11,29)) #datetime.date.today())
+        queryset.update(deposit_date=datetime.date.today()) 
 
         return response
 
