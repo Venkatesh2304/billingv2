@@ -1254,10 +1254,14 @@ class ChequeDepositAdmin(CustomAdminModel) :
     list_display = ["cheque_date","cheque_no","party","amt","bank","deposit_date"]
     autocomplete_fields = ["party"]
     inlines = [BankCollectionInline]
-    # readonly_fields = ["deposit_date"]
+    readonly_fields = ["deposit_date"]
     actions = ['generate_deposit_slip']
-    list_filter = ["deposit_date"]
+    list_filter = ["deposit_date", create_simple_admin_list_filter("Can Be Deposited Today?","cheque_date",{
+                       "Yes" : lambda qs : qs.filter(cheque_date__lte = datetime.date.today()) ,
+                       "No" : lambda qs : qs.filter(cheque_date__gte = datetime.date.today()) ,
+                       })]
     
+
     def get_actions(self,request) : 
         actions = super().get_actions(request)
         if "delete_selected" in actions : actions.pop("delete_selected")
@@ -1835,7 +1839,7 @@ class MyAdminSite(admin.AdminSite):
                 "Pending Sheet": query_url("admin:app_salesmanpendingsheet_changelist" , {"date":"Today"}),
             },
             "Cheque" : {
-                "Cheque Deposit": reverse("admin:app_chequedeposit_changelist"),
+                "Cheque Deposit": reverse("admin:app_chequedeposit_changelist",{"deposit_date__isnull":"True","cheque_date":"Yes"}),
                 "Bank Statement": reverse("admin:app_bankstatement_changelist"),
                 "Push To Ikea" : query_url("admin:app_bankcollection_changelist" , {"pushed":False})
             },
