@@ -21,6 +21,7 @@ from openpyxl import load_workbook
 
 from app import models
 from django.utils.safestring import mark_safe
+from django.views import View
 
 def basepack(request) :
     ikea = Billing()
@@ -120,9 +121,6 @@ def scan_bills(request) :
             return render(request, 'scanner.html', {'selected_vehicle': selected_vehicle , "type" : type})
     return render(request, 'vehicle_selection.html', {'form': form})
     
-def vehicle_selection(request) : 
-    form = VehicleForm() 
-    return render(request, 'vehicle_selection.html', {'form': form})
 
 def get_bill_out(request,loading_date = datetime.date.today()): 
     vehicle = request.GET.get('vehicle')
@@ -272,6 +270,30 @@ def update(request) :
 def force_sales_sync(request) :
     sync_reports(limits={"sales":None} , 
                                 min_days_to_sync={"collection":15})
+
+
+class ScanPendingBills(View):
+    def get(self, request):
+        bill_no = request.GET.get("bill",None)
+        sheet_no = request.GET.get("sheet",None)
+        if bill_no : 
+            return JsonResponse({ bill_no : sheet_no })
+        else :
+            return render(request, 'scan_pending_bill/select_pending_sheet.html')
+
+    def post(self, request):
+        # Extract pending sheet number from POST request
+        pending_sheet_no = request.POST.get('pending_sheet_number')
+        if pending_sheet_no and not pending_sheet_no.startswith('PS'):
+            pending_sheet_no = 'PS' + pending_sheet_no  # Add PS prefix if not present
+
+        # Filter queryset based on sheet number
+        queryset = models.PendingSheetBill.objects.filter(sheet_id=pending_sheet_no).all()
+
+        # Extract required attributes from each bill
+        bills_info = [(obj.bill, obj.bill.party.name , bool(obj.bill_status is not None)) for obj in queryset]
+
+        return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "sheet_no" : pending_sheet_no})
     
 ##depricated
 class ManualPrintForm(forms.Form):

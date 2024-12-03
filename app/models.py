@@ -209,7 +209,7 @@ class Beat(models.Model) :
      def __str__(self) -> str:
           return self.name 
 
-class SalesmanPendingSheet(Beat) :
+class SalesmanPendingSheetX(Beat) :
       class Meta:
         proxy = True
      
@@ -357,27 +357,30 @@ class BankStatement(models.Model) :
         verbose_name_plural = 'Bank'
 
 
-# class PendingSheet(models.Model) : 
-#     sheet_no = models.CharField(max_length=20,primary_key=True)
-#     date = models.DateField(auto_now_add=True)
-#     salesman = models.TextField(max_length=30)
-#     beat = models.TextField(max_length=30)
+class PendingSheet(models.Model) : 
+    sheet_no = models.CharField(max_length=20,primary_key=True)
+    date = models.DateField(auto_now_add=True)
+    salesman = models.TextField(max_length=30)
+    beat = models.TextField(max_length=30)
 
-# class PendingSheetBills(models.Model) : 
-#     sheet = ForeignKey("app.PendingSheet",on_delete=models.CASCADE,related_name="bills")
-#     inum = ForeignKey("app.Sales",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING)
-#     bill_amt = models.IntegerField()
-#     outstanding_amt = models.IntegerField()
-#     outstanding_on_ikea = models.IntegerField(null=True)
-#     outstanding_on_bill = models.IntegerField(null=True)
-#     outstanding_on_sheet = models.IntegerField(null=True)
-#     payment_mode = models.TextField(max_length=15,choices=(("cash","Cash"),("cheque","Cheque"),("neft","NEFT")),null=True)
-#     bill_status = models.TextField(max_length=25,choices=(("scanned","Scanned"),
-#                                                           ("cheque/neft","Bill in Shop For Cheque/NEFT"),
-#                                                           ("paid","Paid"),
-#                                                           ("others","Other Reason"),
-#                                                           ),null=True)
-
+class PendingSheetBill(models.Model) : 
+    sheet = ForeignKey("app.PendingSheet",on_delete=models.CASCADE,related_name="bills")
+    bill = ForeignKey("app.Sales",db_index=False,db_constraint=False,on_delete=models.DO_NOTHING)
+    days = models.IntegerField()
+    # salesman = models.TextField(max_length=30)
+    # bill_amt = models.IntegerField()
+    outstanding_amt = models.IntegerField()
+    outstanding_on_ikea = models.IntegerField(null=True)
+    outstanding_on_bill = models.IntegerField(null=True)
+    outstanding_on_sheet = models.IntegerField(null=True)
+    payment_mode = models.TextField(max_length=15,choices=(("cash","Cash"),("cheque","Cheque"),("neft","NEFT")),null=True)
+    bill_status = models.TextField(max_length=25,choices=(("scanned","Scanned"),
+                                                          ("cheque/neft","Bill in Shop For Cheque/NEFT"),
+                                                          ("paid","Paid"),
+                                                          ("others","Other Reason"),
+                                                          ),null=True)
+    class Meta : 
+          unique_together = ('sheet', 'bill')
 
 
 class SalesmanCollectionBill(models.Model) : 

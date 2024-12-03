@@ -55,7 +55,7 @@ from django.contrib import messages
 import dal.autocomplete
 from pytz import timezone
 from custom.Session import client
-import app.loading_sheet as loading_sheet
+import app.pdf_create as pdf_create
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlencode
@@ -67,6 +67,7 @@ from urllib.parse import quote, unquote
 # from django_admin_multi_selecfrom django.db.models.functions import Concat
 from django.db.models import CharField, Value
 from django.db.models.functions import Concat
+
 
 class PrintType(Enum):
     FIRST_COPY = "first_copy"
@@ -901,15 +902,15 @@ class PrintAdmin(CustomAdminModel) :
             'allow_printed'  : True , 
         },
         PrintType.LOADING_SHEET: {
-            'create_bill': lambda billing, group, context,cash_bills: loading_sheet.create_pdf(billing.loading_sheet(group), 
-                                                                                    sheet_type=loading_sheet.LoadingSheetType.Plain) 
+            'create_bill': lambda billing, group, context,cash_bills: pdf_create.loading_sheet_pdf(billing.loading_sheet(group), 
+                                                                                    sheet_type=pdf_create.LoadingSheetType.Plain) 
                                                             or models.Bill.objects.filter(bill_id__in = group).update(plain_loading_sheet=True) ,
             'file_names': "loading.pdf", 
             'allow_printed'  : True , 
         },
         PrintType.LOADING_SHEET_SALESMAN: {
             'create_bill': lambda billing, group, context,cash_bills : 
-                    loading_sheet.create_pdf(billing.loading_sheet(group), sheet_type=loading_sheet.LoadingSheetType.Salesman,
+                    pdf_create.loading_sheet_pdf(billing.loading_sheet(group), sheet_type=pdf_create.LoadingSheetType.Salesman,
                                                 context=context) or 
                     aztec.add_aztec_codes_to_pdf("loading.pdf","loading.pdf",PrintType.LOADING_SHEET_SALESMAN) ,
             'file_names': "loading.pdf,loading.pdf",
@@ -1462,7 +1463,7 @@ class BankStatementAdmin(CustomAdminModel) :
         if change:
             old_obj = models.BankStatement.objects.get(pk=obj.pk)
 
-            if old_obj.type != obj.type : 
+            if (old_obj.type != obj.type) or (old_obj.type == "cheque") : 
                 if old_obj.type == "cheque" :  
                     models.BankCollection.objects.filter(bank_entry = old_obj).update(bank_entry = None)
                 if old_obj.type == "neft" : 
@@ -1768,47 +1769,37 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
 
     @admin.action(description='Download Pending Sheet')
     def download_pending_sheet(self,request,queryset) : 
-        beat_ids = [ str(id) for id in queryset.values_list("id",flat=True) ]
-        beat_salesman_map = { beat.name : beat.salesman_name for beat in queryset.all() }
+        beat_ids = { str(id) for id in queryset.values_list("id",flat=True) }
+        beat_maps = { beat.name : (beat.salesman_name,beat.id) for beat in queryset.all() }
         billing = Billing()
-        bytesio = billing.pending_statement_excel(beat_ids,datetime.date.today())
-        df = pd.read_excel(bytesio,skiprows = 13)
+        date = datetime.date.today()
+        bytesio = billing.pending_statement_excel(beat_ids,date)
+        df = pd.read_excel(bytesio,skiprows = 13,skipfooter=1)
+        df = df.dropna(subset = "Beat Name")
+        df["Salesperson Name"] = df["Salesperson Name"].str.split("-").str[1]
+        pdfs = [] 
         for beat , rows in df.groupby("Beat Name") : 
-            salesman = beat_salesman_map[beat]
-            loading_sheet.create_pending_sheet( salesman + ".pdf" , rows , "PS123456789" ,  salesman , beat , datetime.date.today() )
+            salesman,beat_id = beat_maps[beat]
+            sheet_no = "PS" + date.strftime("%d%m%y") + str(beat_id)
+            models.PendingSheet(sheet_no=sheet_no,beat=beat,salesman=salesman,date=date).save()
+            rows["sheet_id"] = sheet_no 
+            renamed_rows = rows.rename(columns={"Bill No":"bill_id","OutstANDing Amount":"outstanding_amt","Bill Ageing (In Days)" : "days"})
+            bulk_raw_insert("pendingsheetbill",renamed_rows[["sheet_id","bill_id","days","outstanding_amt"]],ignore=True)
+            bytesio = pdf_create.pending_sheet_pdf(rows , sheet_no ,  salesman , beat , date)
+            pdfs.append(bytesio)
         
-
-            # with open(f"bills/X{beat_id}.xlsx","wb+") as f : f.write(bytesio.getbuffer())
-        
-        # writer = PdfWriter()
-        # for beat_id in beat_ids :
-        #     reader = PdfReader(f"bills/X{beat_id}.pdf")
-        #     for page in reader.pages:
-        #         writer.add_page(page)
-        #     if len(reader.pages) % 2 != 0:
-        #         writer.add_blank_page()
+        writer = PdfWriter()
+        for pdf in pdfs :
+            reader = PdfReader(pdf)
+            for page in reader.pages:
+                writer.add_page(page)
+            if len(reader.pages) % 2 != 0:
+                writer.add_blank_page()
+        writer.write("pending_sheet.pdf")
+        writer.close()
             
-        # writer.write("pending_sheet.pdf")
-        # writer.close()
-            
-        # writer = PdfWriter()
-        # for bytesio in pdfs :
-        #     bytesio.seek(0)
-        #     reader = PdfReader(bytesio)
-        #     for page in reader.pages:
-        #         writer.add_page(page)
-        #     if len(reader.pages) % 2 != 0:
-        #         writer.add_blank_page()
-        #     bytesio.close()
-
-        # combined_pdf = BytesIO()
-        # with open("pending_sheet.pdf","wb+") as f : f.write(combined_pdf.getvalue())
-        # combined_pdf.seek(0)
         messages.success(request,mark_safe(f"Download Pending Sheet : {hyperlink('/static/pending_sheet.pdf','PENDING_SHEET')}"))
-        # response = HttpResponse(combined_pdf.getvalue(), content_type='application/pdf')
-        # response['Content-Disposition'] = 'attachment; filename="' + f"pending_sheet.pdf" + '"'
-        # return response 
-        
+            
     def changelist_view(self, request, extra_context = {}) : 
         class PendingSheetForm(forms.Form) : 
             date = forms.DateField(initial=datetime.date.today() + datetime.timedelta(days = (datetime.datetime.now().hour > 3)) ,
@@ -1882,7 +1873,7 @@ class MyAdminSite(admin.AdminSite):
             "Collection": {
                 "Outstanding": reverse("admin:app_outstanding_changelist"),
                 "Salesman Cheque": query_url("admin:app_salesmancollection_changelist" , {"time":"Today"}),
-                "Pending Sheet": query_url("admin:app_salesmanpendingsheet_changelist" , {"date":"Today"}),
+                "Pending Sheet": query_url("admin:app_salesmanpendingsheetx_changelist" , {"date":"Today"}),
             },
             "Cheque" : {
                 "Cheque Deposit": reverse("admin:app_chequedeposit_changelist"),
@@ -1994,7 +1985,7 @@ admin_site.register(models.BillDelivery,BillDeliveryAdmin)
 
 admin_site.register(models.OrdersProxy,OrdersAdmin)
 admin_site.register(models.BasepackProcessStatus,BasepackAdmin)
-admin_site.register(models.SalesmanPendingSheet,SalesmanPendingSheetAdmin)
+admin_site.register(models.SalesmanPendingSheetX,SalesmanPendingSheetAdmin)
 admin_site.register(models.Vehicle,None)
 admin_site.register(models.SalesmanLoadingSheet,None)
 admin_site.register(models.Settings,SettingsAdmin)

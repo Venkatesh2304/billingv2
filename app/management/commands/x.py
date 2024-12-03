@@ -34,10 +34,16 @@ cur = connection.cursor()
 # cur.execute("update app_bill set loading_sheet_id = NULL where loading_sheet_id = 'SMA59361'")
 # cur.execute("DELETE from app_salesmanloadingsheet where inum = 'SMA59361'")
 # ds
-cur.execute("DELETE from app_salesmancollectionbill")
-cur.execute("DELETE from app_salesmancollection")
+# cur.execute("DELETE from app_pendingsheetbill")
+# cur.execute("DELETE from app_pendingsheet")
+# cur.execute("DELETE from app_pendingsheetbill")
+# cur.execute("DELETE from app_salesmancollection")
+
 # cur.execute("DELETE from app_chequedeposit")
 # fdg
+print( pd.read_sql(f"select * from app_pendingsheet",connection)  )
+print( pd.read_sql(f"select * from app_pendingsheetbill",connection)  )
+dfg
 print( pd.read_sql(f"""select salesman_name as user , (select name from app_party where party_id = code) as party , inum as bill_no , -balance as amount  
               from app_outstanding left outer join app_beat on app_outstanding.beat = app_beat.name
               where  balance <= -1 and days like '%friday%' """ ,connection) )
