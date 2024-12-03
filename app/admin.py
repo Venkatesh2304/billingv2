@@ -1779,6 +1779,9 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
         df["Salesperson Name"] = df["Salesperson Name"].str.split("-").str[1]
         pdfs = [] 
         for beat , rows in df.groupby("Beat Name") : 
+            max_days_per_party = rows.groupby("Party Name")["Bill Ageing (In Days)"].max().to_dict()
+            rows["max_days_per_party"] = rows["Party Name"].map(max_days_per_party)
+            rows = rows.sort_values(by = ["max_days_per_party","Party Name"] , ascending=False)
             salesman,beat_id = beat_maps[beat]
             sheet_no = "PS" + date.strftime("%d%m%y") + str(beat_id)
             models.PendingSheet(sheet_no=sheet_no,beat=beat,salesman=salesman,date=date).save()

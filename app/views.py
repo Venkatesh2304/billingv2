@@ -286,23 +286,45 @@ class ScanPendingBills(View):
                         "is_loading_sheet" : loading_sheet_or_bill_no != bill_no ,  
                         "loading_sheet_or_bill_no" : loading_sheet_or_bill_no}
             return render(request, 'scan_pending_bill/pending_bill.html',context)
+        
+        elif sheet_no : 
+
+            if sheet_no and not sheet_no.startswith('PS'):
+                sheet_no = 'PS' + sheet_no  # Add PS prefix if not present
+
+            queryset = models.PendingSheetBill.objects.filter(sheet_id=sheet_no).all()
+            bills_info = [(obj.bill, obj.bill.party.name , bool(obj.outstanding_on_bill is not None)) for obj in queryset]
+            return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "sheet_no" : sheet_no})
+
         else :
             return render(request, 'scan_pending_bill/select_pending_sheet.html')
 
     def post(self, request):
         # Extract pending sheet number from POST request
         pending_sheet_no = request.POST.get('pending_sheet_number')
-        if pending_sheet_no and not pending_sheet_no.startswith('PS'):
-            pending_sheet_no = 'PS' + pending_sheet_no  # Add PS prefix if not present
+        bill_no = request.POST.get('bill_number')
+        bill_no = bill_no.split("(")[0].strip() #Remove the loading sheet number
+        obj = models.PendingSheetBill.objects.get(sheet_id=pending_sheet_no,bill_id=bill_no)
+        obj.payment_mode = request.POST.get('payment_mode')
+        obj.outstanding_on_sheet = request.POST.get('outstanding_on_sheet')
+        obj.outstanding_on_bill = request.POST.get('outstanding_on_bill')
+        obj.save()
+        return redirect(f"/scan_pending_bills?sheet={pending_sheet_no}")
+        
+def sync_impact(request):
+    bill_counts = {}
+    for vehicle in models.Vehicle.objects.all(): 
+        qs = models.Bill.objects.filter(loading_time__date = datetime.date.today())
+        from_date = qs.aggregate(min_date = models.Min('bill__date'))['min_date']
+        to_date = datetime.date.today() 
+        bills = qs.values_list("bill_id",flat=True)
+        if bills :
+            bill_counts[vehicle.name] = len(bills)
+            if vehicle.name_on_impact is None : 
+                raise Exception("Vehicle name on impact is not set") 
+            Billing().sync_impact(from_date,to_date,bills,vehicle.name_on_impact)
+    return JsonResponse(bill_counts)
 
-        # Filter queryset based on sheet number
-        queryset = models.PendingSheetBill.objects.filter(sheet_id=pending_sheet_no).all()
-
-        # Extract required attributes from each bill
-        bills_info = [(obj.bill, obj.bill.party.name , bool(obj.bill_status is not None)) for obj in queryset]
-
-        return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "sheet_no" : pending_sheet_no})
-    
 
 ##depricated
 class ManualPrintForm(forms.Form):

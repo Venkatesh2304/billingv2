@@ -30,6 +30,8 @@ from .Session import Session,StatusCodeError
 from bs4 import BeautifulSoup
 from PyPDF2 import PdfMerger
 from .std import add_image_to_bills
+from urllib.parse import urlencode
+import requests
 
 class IkeaPasswordExpired(Exception) :
     pass
@@ -276,7 +278,36 @@ class IkeaDownloader(BaseIkea) :
           files = {'file': ( "IRNGenByMe.xlsx" , bytesio )}
           res = self.post("/rsunify/app/stockmigration/eInvoiceIRNuploadFile",files=files)
           return res.json()
-
+      
+      def sync_impact(self,from_date,to_date,bills,vehicle_name):
+          login_data = self.post("/rsunify/app/impactDeliveryUrl").json()
+          url = login_data["url"]
+          del login_data["url"]
+          url = url + "ikealogin.do?" + urlencode(login_data)
+          s = requests.Session() 
+          s.get(url)
+          s.get("https://shogunlite.com/")
+          s.get("https://shogunlite.com/login.do") 
+          html = s.get("https://shogunlite.com/deliveryupload_home.do?meth=viewscr_home_tripplan&hid_id=&dummy=").text 
+          form = extractForm(html,all_forms=True)
+          form =  {"org.apache.struts.taglib.html.TOKEN": form["org.apache.struts.taglib.html.TOKEN"],
+                  "actdate": from_date.strftime("%d-%m-%Y") + " - " + to_date.strftime("%d-%m-%Y") , 
+                  "selectedspid": "493299",
+                  "meth":"ajxgetDetailsTrip"} #warning: spid is vehicle A1 (so we keep it default)
+          html = s.get(f"https://shogunlite.com/deliveryupload_home.do",params=form).text 
+          soup = BeautifulSoup(html,"html.parser")      
+          vehicle_codes = { option.text : option.get("value")  for option in soup.find("select",{"id":"mspid"}).find_all("option") }
+          all_bill_codes = [ code.get("value") for code in soup.find_all("input",{"name":"selectedOutlets"}) ]
+          all_bill_numbers = list(pd.read_html(html)[-1]["BillNo"].values)
+          bill_to_code_map = dict(zip(all_bill_numbers,all_bill_codes))      
+          form = extractForm(html)
+          form["mspid"] = vehicle_codes[vehicle_name]
+          form["meth"] = "ajxgetMovieBillnumber"
+          form["selectedspid"] = "493299"
+          form["selectedOutlets"] = [ bill_to_code_map[bill] for bill in bills ] 
+          del form["beat"]
+          del form["sub"]
+          s.post("https://shogunlite.com/deliveryupload_home.do",data = form).text
 
 
 class Billing(IkeaDownloader) :
@@ -804,10 +835,13 @@ def jsHash(str) :
   md5_hash = hash_object.hexdigest()
   return hashlib.sha256(md5_hash.encode()).hexdigest()
 
-def extractForm(html) :
-  soup = BeautifulSoup(html, 'html.parser')
-  form = {  i["name"]  : i.get("value","") for i in soup.find("form").find_all('input', {'name': True}) }
-  return form 
+def extractForm(html,all_forms = False) :
+    soup = BeautifulSoup(html, 'html.parser')
+    if all_forms : 
+      form = {  i["name"]  : i.get("value","") for form in soup.find_all("form") for i in form.find_all('input', {'name': True}) }
+    else : 
+      form = {  i["name"]  : i.get("value","") for i in soup.find("form").find_all('input', {'name': True}) }
+    return form 
 
 class Einvoice(Session) : 
       key = "einvoice"

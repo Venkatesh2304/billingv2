@@ -3,7 +3,7 @@ from io import BytesIO
 import pandas as pd
 from fpdf import FPDF
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle , Spacer
 from reportlab.lib import colors
 from enum import Enum 
 
@@ -179,12 +179,12 @@ def pending_sheet_pdf(df, sheet_no ,salesman,beat,date):
         df[col] = df[col].astype(str).str.split(".").str[0]
     data = []
     for _,row in df.iterrows() : 
-        data.append([ row["Party Name"].split("-")[0], row["Date"] , row["Salesperson Name"][:12] , row["Bill No"] , str(row["Days"]).split(".")[0] , " " ])
-        data.append([ "" , row["Bill"] , row["Coll"] , row["Outstanding"] , " " , " " ])
+        data.append([ row["Party Name"].split("-")[0], row["Date"] , row["Salesperson Name"][:12] , str(row["Days"]).split(".")[0] , " " , " " ])
+        data.append([ row["Bill No"] , row["Bill"] , row["Coll"] , row["Outstanding"] , " " , " " ])
 
 
     # Create the table and specify column widths
-    table = Table(data, colWidths= [total_width*0.3] + [total_width*0.12,total_width*0.15,total_width*0.1,total_width*0.1]  + [total_width*0.23])
+    table = Table(data, colWidths= [total_width*0.3] + [total_width*0.12,total_width*0.15,total_width*0.1,total_width*0.13]  + [total_width*0.20])
     
     # Initialize the table style with basic configurations
     table_style = TableStyle([
@@ -195,16 +195,29 @@ def pending_sheet_pdf(df, sheet_no ,salesman,beat,date):
         ('FONT', (0,0), (-1,-1), 'Helvetica', 10),
         ('TEXTCOLOR', (0,0), (-1,-1), colors.black),
         ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE')
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('LINEBEFORE', (4, 0), (5, -1), 1, colors.black) ,
     ])
 
     # Apply a bottom border only to even rows (2, 4, 6, ...)
     for row_index in range(1, len(data), 2):  # Start at 1 and step by 2
         table_style.add('LINEBELOW', (0, row_index), (-1, row_index), 1, colors.black)
 
-    # Apply the style and build the table
     table.setStyle(table_style)
-    elements = [header_table,table] #Paragraph(sheet_no), Paragraph() , 
+    total_outstanding = round(df["Outstanding"].astype(float).sum())
+    count_table = [("Total Bill Count",len(df.index)),("Returned Bill"," "),
+                   ("Total Outstanding",total_outstanding),("Total Collection"," ")]
+    denomination_data1 = [(500,"","") , (200,"","") , (100,"","") , (50,"","") ] 
+    denomination_data2 = [(20,"","") , (10,"","") ,("Coins","",""),("Total","","")] 
+    common_style = TableStyle([ ('GRID', (0, 0), (-1, -1), 1, colors.black) ])
+    widths = [total_width/15,total_width/10,total_width/9]
+    c = Table(count_table, colWidths=[total_width/5,total_width/10],style=common_style)
+    d1 = Table(denomination_data1, colWidths=widths,style=common_style)
+    d2 = Table(denomination_data2, colWidths=widths,style=common_style)
+    combined_table = [[c , d1 , d2]]
+    combined_table = Table(combined_table)
+
+    elements = [header_table,table,Spacer(1, 20),combined_table] #Paragraph(sheet_no), Paragraph() , 
     pdf.build(elements)
     return bytesio 
 

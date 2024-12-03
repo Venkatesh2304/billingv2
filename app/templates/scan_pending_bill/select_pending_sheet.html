@@ -7,13 +7,13 @@
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen">
     <div class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4 w-full max-w-md">
-        <form action="" method="POST">
+        <form action="" method="GET">
             {% csrf_token %}
             <div class="mb-4">
                 <label class="block text-gray-700 text-sm font-bold mb-2" for="pending_sheet_number">
                     Pending Sheet Number
                 </label>
-                <input name="pending_sheet_number" id="pending_sheet_number" type="text" placeholder="Enter pending sheet number" 
+                <input name="sheet" id="pending_sheet_number" type="text" placeholder="Enter pending sheet number" 
                     class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
             </div>
             <div class="flex items-center justify-center">

@@ -79,6 +79,21 @@
         {% csrf_token %}
         {{ form.as_p }}  
         <button type="submit">Submit</button>
+        <button type="button" onclick="pushImpact()">Push to Ikea</button>
     </form>
 </body>
+<script>
+    function pushImpact() { 
+        fetch(`/sync_impact`)
+            .then(response => response.json() )
+            .then(data => {
+                var msg = "Impact Sync Count : "
+                for(var vehicle in data) {
+                    msg += "\n" + vehicle + " : " + String(data[vehicle]) ;
+                }
+                alert(msg) ; 
+            })
+            .catch(error => alert('Error Syncing Impact :\n', error));
+    }
+</script>
 </html>

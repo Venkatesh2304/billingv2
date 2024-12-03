@@ -13,6 +13,7 @@
         <form action="" method="POST" id="pendingSheetForm">
             <div class="grid grid-cols-1 gap-6">
                 {% csrf_token %}
+                    <input type="text" name="pending_sheet_number" value="{{ obj.sheet_id }}" hidden />
                 <div>
                     <label class="block text-gray-700 text-sm font-bold mb-2" for="bill_number">Bill Number</label>
                     <input type="text" name="bill_number" id="bill_number" value="{{ obj.bill_id }} {% if is_loading_sheet %} ({{ loading_sheet_or_bill_no }}) {% endif %}" readonly  
@@ -65,7 +66,8 @@
                     <button type="button" onclick="validateForm()" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
                         Submit
                     </button>
-                    <button type="button" onclick="window.history.back()" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded ml-4 focus:outline-none focus:shadow-outline">
+                    <button type="button" onclick="window.location.href = '/scan_pending_bills?sheet={{obj.sheet_id}}'" 
+                            class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded ml-4 focus:outline-none focus:shadow-outline">
                         Cancel
                     </button>
                 </div>
