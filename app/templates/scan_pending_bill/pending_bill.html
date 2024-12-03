@@ -117,6 +117,7 @@
                             closeScanner();
                         }
                     }).catch((err) => {
+                        alert(err)
                         console.error(err);
                         alert("Error occurred while scanning. Please try again.");
                         closeScanner();
