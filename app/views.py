@@ -277,7 +277,14 @@ class ScanPendingBills(View):
         bill_no = request.GET.get("bill",None)
         sheet_no = request.GET.get("sheet",None)
         if bill_no : 
-            return JsonResponse({ bill_no : sheet_no })
+            obj = models.PendingSheetBill.objects.get(sheet_id=sheet_no,bill_id=bill_no)
+            obj.outstanding_on_ikea = -round(models.Outstanding.objects.get(inum=bill_no).balance)
+            loading_sheet_or_bill_no =  models.Bill.objects.get(bill_id = bill_no).loading_sheet_id or bill_no #To verify scanner
+            context = { "obj":obj ,
+                        "party_name":str(obj.bill.party),
+                        "bill_amt" : round(-obj.bill.amt) , 
+                        "loading_sheet_or_bill_no" : loading_sheet_or_bill_no}
+            return render(request, 'scan_pending_bill/pending_bill.html',context)
         else :
             return render(request, 'scan_pending_bill/select_pending_sheet.html')
 
@@ -295,6 +302,7 @@ class ScanPendingBills(View):
 
         return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "sheet_no" : pending_sheet_no})
     
+
 ##depricated
 class ManualPrintForm(forms.Form):
     from_bill = forms.CharField(label='From Bill', max_length=100)

@@ -1,0 +1,143 @@
+<!-- pending_sheet_bill.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
+    <title>Pending Sheet Bill Details</title>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center">
+    <div class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4 w-full max-w-2xl">
+        <form action="" method="POST" id="pendingSheetForm">
+            <div class="grid grid-cols-1 gap-6">
+                {% csrf_token %}
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="bill_number">Bill Number</label>
+                    <input type="text" name="bill_number" id="bill_number" value="{{ loading_sheet_or_bill_no }}" readonly  
+                        class="bg-gray-200 shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="party_name">Party Name</label>
+                    <input type="text" name="party_name" id="party_name" value="{{ party_name }}" readonly disabled 
+                        class="bg-gray-200 shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="days">Days</label>
+                    <input type="text" name="days" id="days" value="{{ obj.days }}" readonly disabled 
+                        class="bg-gray-200 shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="bill_amt">Bill Amount</label>
+                    <input type="text" name="bill_amt" id="bill_amt" value="{{ bill_amt }}" readonly disabled 
+                        class="bg-gray-200 shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="outstanding_amt">Old Outstanding Amount</label>
+                    <input type="text" name="outstanding_amt" id="outstanding_amt" value="{{ obj.outstanding_amt }}" readonly disabled 
+                        class="bg-gray-200 shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="outstanding_on_ikea">New Outstanding on IKEA</label>
+                    <input type="text" name="outstanding_on_ikea" id="outstanding_on_ikea" value="{{ obj.outstanding_on_ikea }}" readonly disabled 
+                        class="bg-gray-200 shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="outstanding_on_bill">New Outstanding on Bill</label>
+                    <input type="number" name="outstanding_on_bill" id="outstanding_on_bill" value="{{ obj.outstanding_on_bill|default:'' }}" 
+                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="outstanding_on_sheet">New Outstanding on Sheet</label>
+                    <input type="number" name="outstanding_on_sheet" id="outstanding_on_sheet" value="{{ obj.outstanding_on_sheet|default:'' }}" 
+                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="payment_mode">Payment Mode</label>
+                    <select name="payment_mode" id="payment_mode" class="  border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                        <option value="cash" {% if obj.payment_mode == "cash" %}selected{% endif %}>Cash</option>
+                        <option value="cheque" {% if obj.payment_mode == "cheque" %}selected{% endif %}>Cheque</option>
+                        <option value="neft" {% if obj.payment_mode == "neft" %}selected{% endif %}>NEFT</option>
+                    </select>
+                </div>
+                <div class="flex items-center justify-center mt-4">
+                    <button type="button" onclick="validateForm()" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
+                        Submit
+                    </button>
+                    <button type="button" onclick="window.history.back()" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded ml-4 focus:outline-none focus:shadow-outline">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div id="videoContainer" class="hidden fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+        <div class="bg-white rounded-lg p-4 relative">
+            <video id="video" class="w-full h-auto"></video>
+            <button onclick="closeScanner()" class="bg-red-500 text-white px-3 py-1 mt-4 h-auto">Close</button>
+        </div>
+    </div>
+
+    <script>
+        function validateForm() {
+            const outstandingOnBill = parseFloat(document.getElementById("outstanding_on_bill").value) || 0;
+            const outstandingOnSheet = parseFloat(document.getElementById("outstanding_on_sheet").value) || 0;
+            const outstandingOnIkea = parseFloat(document.getElementById("outstanding_on_ikea").value) || 0;
+            const paymentMode = document.getElementById("payment_mode").value;
+            const billNumber = document.getElementById("bill_number").value;
+
+            // Step 1: Check if outstanding on bill and sheet are equal
+            if (outstandingOnBill !== outstandingOnSheet) {
+                alert("Outstanding on Bill and Outstanding on Sheet must be equal.");
+                return;
+            }
+
+            // Step 2: Check if both values are equal to outstanding on IKEA
+            if (outstandingOnBill !== outstandingOnIkea) {
+                const confirmResult = confirm(`IKEA Outstanding (${outstandingOnIkea}) is not matching with Outstanding of Pending Sheet (${outstandingOnBill}). Do you want to proceed?`);
+                if (!confirmResult) {
+                    return;
+                }
+            }
+
+            // Step 3: If outstanding on bill is non-zero and payment mode is cash, open Aztec scanner
+            if (outstandingOnBill > 0 && paymentMode === "cash") {
+                const codeReader = new ZXing.BrowserMultiFormatReader();
+
+                codeReader.listVideoInputDevices().then(videoInputDevices => {
+                    const backCamera = videoInputDevices.find(device => device.label.toLowerCase().includes('back'));
+                    const selectedDeviceId = backCamera ? backCamera.deviceId : videoInputDevices[0].deviceId;
+                    codeReader.decodeOnceFromVideoDevice(selectedDeviceId, 'video').then((result) => {
+                        if (result.text === {{ loading_sheet_or_bill_no }}) {
+                            document.getElementById("pendingSheetForm").submit();
+                        } else {
+                            alert("Scanned code does not match the Bill Number. Please try again.");
+                            closeScanner();
+                        }
+                    }).catch((err) => {
+                        console.error(err);
+                        alert("Error occurred while scanning. Please try again.");
+                        closeScanner();
+                    });
+                }).catch(err => console.error(err));
+
+                document.getElementById("videoContainer").classList.remove("hidden");
+
+                return;
+            }
+
+            // If all checks pass, submit the form
+            document.getElementById("pendingSheetForm").submit();
+        }
+
+        function closeScanner() {
+            const videoContainer = document.getElementById("videoContainer");
+            if (videoContainer) {
+                videoContainer.classList.add("hidden");
+            }
+        }
+    </script>
+</body>
+</html>
