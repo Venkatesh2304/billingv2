@@ -31,7 +31,7 @@ from bs4 import BeautifulSoup
 from PyPDF2 import PdfMerger
 from .std import add_image_to_bills
 from urllib.parse import urlencode
-
+import requests 
 
 class IkeaPasswordExpired(Exception) :
     pass
@@ -284,7 +284,7 @@ class IkeaDownloader(BaseIkea) :
           url = login_data["url"]
           del login_data["url"]
           url = url + "ikealogin.do?" + urlencode(login_data)
-          s = Session() 
+          s = requests.Session() 
           s.get(url)
           s.get("https://shogunlite.com/")
           s.get("https://shogunlite.com/login.do") 
