@@ -301,6 +301,7 @@ class IkeaDownloader(BaseIkea) :
           all_bill_numbers = list(pd.read_html(html)[-1]["BillNo"].values)
           bill_to_code_map = dict(zip(all_bill_numbers,all_bill_codes))      
           form = extractForm(html)
+          form["exedate"] = datetime.date.today().strftime("%d-%m-%Y")
           form["mspid"] = vehicle_codes[vehicle_name]
           form["meth"] = "ajxgetMovieBillnumber"
           form["selectedspid"] = "493299"

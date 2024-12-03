@@ -40,3 +40,10 @@ def sync_impact(date,bills,vehicle_name):
     del form["beat"]
     del form["sub"]
     s.post("https://shogunlite.com/deliveryupload_home.do",data = form).text
+
+
+# Usage example
+pdf_path = "bill.pdf"  # Path to the uploaded file
+output_path = "filtered_pages.pdf"  # Path to save the new PDF
+# extract_pages_with_large_blank_height(pdf_path, output_path, blank_threshold=640)
+

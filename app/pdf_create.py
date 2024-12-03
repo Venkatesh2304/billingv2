@@ -6,6 +6,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle , Spacer
 from reportlab.lib import colors
 from enum import Enum 
+import fitz 
 
 # Set font size and cell height
 S = 10  # Font size
@@ -221,3 +222,30 @@ def pending_sheet_pdf(df, sheet_no ,salesman,beat,date):
     pdf.build(elements)
     return bytesio 
 
+def remove_blank_pages_from_first_copy(pdf_path, blank_threshold=640):
+    doc = fitz.open(pdf_path)
+    output_pdf = fitz.open()  # Create a new PDF document
+
+    for page_num in range(len(doc)):
+        page = doc[page_num]
+        page_height = page.rect.height  # Total height of the page
+        text_instances = page.get_text("dict")["blocks"]
+
+        max_y = 0  # Track the maximum Y-coordinate of text
+
+        for block in text_instances:
+            if "bbox" in block:  # Each block has a bounding box
+                y1 = block["bbox"][3]  # Bottom Y-coordinate
+                if y1 > max_y:
+                    max_y = y1
+
+        # Calculate blank height
+        blank_height = page_height - max_y
+
+        # Check if the blank height exceeds the threshold
+        if blank_height < blank_threshold:
+            output_pdf.insert_pdf(doc, from_page=page_num, to_page=page_num)
+
+    output_pdf.save(pdf_path)
+    output_pdf.close()
+    doc.close()
