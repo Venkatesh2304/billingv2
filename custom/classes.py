@@ -31,7 +31,7 @@ from bs4 import BeautifulSoup
 from PyPDF2 import PdfMerger
 from .std import add_image_to_bills
 from urllib.parse import urlencode
-import requests
+
 
 class IkeaPasswordExpired(Exception) :
     pass
@@ -284,7 +284,7 @@ class IkeaDownloader(BaseIkea) :
           url = login_data["url"]
           del login_data["url"]
           url = url + "ikealogin.do?" + urlencode(login_data)
-          s = requests.Session() 
+          s = Session() 
           s.get(url)
           s.get("https://shogunlite.com/")
           s.get("https://shogunlite.com/login.do") 
@@ -304,7 +304,7 @@ class IkeaDownloader(BaseIkea) :
           form["mspid"] = vehicle_codes[vehicle_name]
           form["meth"] = "ajxgetMovieBillnumber"
           form["selectedspid"] = "493299"
-          form["selectedOutlets"] = [ bill_to_code_map[bill] for bill in bills ] 
+          form["selectedOutlets"] = [ bill_to_code_map[bill] for bill in bills if bill in bill_to_code_map ] 
           del form["beat"]
           del form["sub"]
           s.post("https://shogunlite.com/deliveryupload_home.do",data = form).text
