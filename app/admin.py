@@ -1769,21 +1769,27 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
     @admin.action(description='Download Pending Sheet')
     def download_pending_sheet(self,request,queryset) : 
         beat_ids = [ str(id) for id in queryset.values_list("id",flat=True) ]
+        beat_salesman_map = { beat.name : beat.salesman_name for beat in queryset.all() }
         billing = Billing()
-        for beat_id in beat_ids :
-            bytesio = billing.pending_statement_pdf([beat_id],datetime.date.today())
-            with open(f"bills/X{beat_id}.pdf","wb+") as f : f.write(bytesio.getbuffer())
+        bytesio = billing.pending_statement_excel(beat_ids,datetime.date.today())
+        df = pd.read_excel(bytesio,skiprows = 13)
+        for beat , rows in df.groupby("Beat Name") : 
+            salesman = beat_salesman_map[beat]
+            loading_sheet.create_pending_sheet( salesman + ".pdf" , rows , "PS123456789" ,  salesman , beat , datetime.date.today() )
         
-        writer = PdfWriter()
-        for beat_id in beat_ids :
-            reader = PdfReader(f"bills/X{beat_id}.pdf")
-            for page in reader.pages:
-                writer.add_page(page)
-            if len(reader.pages) % 2 != 0:
-                writer.add_blank_page()
+
+            # with open(f"bills/X{beat_id}.xlsx","wb+") as f : f.write(bytesio.getbuffer())
+        
+        # writer = PdfWriter()
+        # for beat_id in beat_ids :
+        #     reader = PdfReader(f"bills/X{beat_id}.pdf")
+        #     for page in reader.pages:
+        #         writer.add_page(page)
+        #     if len(reader.pages) % 2 != 0:
+        #         writer.add_blank_page()
             
-        writer.write("pending_sheet.pdf")
-        writer.close()
+        # writer.write("pending_sheet.pdf")
+        # writer.close()
             
         # writer = PdfWriter()
         # for bytesio in pdfs :
@@ -1830,11 +1836,15 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
         return super().changelist_view(request, extra_context | {"form" : form,"title":"",
                                                                  "form_style":"margin-bottom:50px;border:2px solid"})
     
+
+
+
 class SettingsAdmin(CustomAdminModel) :
     permissions = [Permission.change,Permission.add]
     list_display_links = ["key"]
     list_display = ["key","status","value"]
     list_editable = ["status","value"]
+
 
 query_url = lambda view,params : f'{reverse(view)}?{urlencode(params)}'
 

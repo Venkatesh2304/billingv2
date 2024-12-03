@@ -265,6 +265,13 @@ class IkeaDownloader(BaseIkea) :
             durl = r.send(self).text
             return self.download_file(durl)
 
+      def pending_statement_excel(self,beats,date) : 
+            r = get_curl("ikea/pending_statement_excel")
+            r.data["jsonObjWhereClause"] = curl_replace(r'(":val5":").{0}(.*":val8":").{10}', 
+                                  (",".join(beats),date.strftime("%Y-%m-%d")) , r.data["jsonObjWhereClause"])
+            durl = r.send(self).text
+            return self.download_file(durl)
+      
       def upload_irn(self,bytesio) : 
           files = {'file': ( "IRNGenByMe.xlsx" , bytesio )}
           res = self.post("/rsunify/app/stockmigration/eInvoiceIRNuploadFile",files=files)

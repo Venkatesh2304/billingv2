@@ -56,7 +56,7 @@ def print_table(pdf,df,border = 0,print_header = True) :
             pdf.add_page()      # Add a new page
             print_table_header(pdf, col_widths, header, S, H, B)  # Reprint the header on the new page
 
-        for i, item in enumerate(row):
+        for i, item in enumerate(row): 
                 pdf.cell(col_widths[i], H, str(item), border=B, align='L')
         pdf.ln()
 
@@ -145,3 +145,90 @@ def create_pdf(tables:tuple[pd.DataFrame],sheet_type:LoadingSheetType,context = 
     pdf.output(OUTPUT_PDF_FILE)
 
     print(f"PDF generated: {OUTPUT_PDF_FILE}")
+
+
+
+from reportlab.lib import pagesizes
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+from reportlab.lib import colors
+
+def create_pending_sheet(path, df,x,y,z,r):
+    # Define the PDF document with specified margins
+    pdf = SimpleDocTemplate(path, pagesize=letter, leftMargin=30, rightMargin=30, topMargin=10, bottomMargin=10)
+    
+    # Calculate the width of the page and the columns
+    width, height = letter
+    total_width = width - 60  # Subtract margins
+    first_column_width = total_width * 0.3  # 30% of the content width for the first column
+    remaining_column_width = (total_width - first_column_width) / 5  # Divide remaining space among other columns
+
+    df = df.rename(columns = {"Bill Net Amt":"Bill","Collected Amount":"Coll","OutstANDing Amount":"Outstanding","Bill Ageing (In Days)":"Days","Sr No":" "})
+    df["Date"] = df["Date"].dt.strftime("%d/%m/%Y")
+    data = []
+    df = df.iloc[:-1]
+    for _,row in df.iterrows() : 
+        data.append([ row["Party Name"].split("-")[0], row["Date"] , row["Salesperson Name"].split("-")[1][:14] , row["Bill No"] , str(row["Days"]).split(".")[0] , " " ])
+        data.append([ "" , row["Bill"] , row["Coll"] , row["Outstanding"] , " " , " " ])
+
+
+    # Create the table and specify column widths
+    table = Table(data, colWidths= [total_width*0.3] + [total_width*0.12,total_width*0.15,total_width*0.1,total_width*0.1]  + [total_width*0.23])
+    
+    # Initialize the table style with basic configurations
+    table_style = TableStyle([
+        ('BOTTOMPADDING', (0,0), (-1,-1), 2),
+        ('TOPPADDING', (0,0), (-1,-1), 2),
+        ('LEFTPADDING', (0,0), (-1,-1), 5),
+        ('RIGHTPADDING', (0,0), (-1,-1), 5),
+        ('FONT', (0,0), (-1,-1), 'Helvetica', 10),
+        ('TEXTCOLOR', (0,0), (-1,-1), colors.black),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE')
+    ])
+
+    # Apply a bottom border only to even rows (2, 4, 6, ...)
+    for row_index in range(1, len(data), 2):  # Start at 1 and step by 2
+        table_style.add('LINEBELOW', (0, row_index), (-1, row_index), 1, colors.black)
+
+    # Apply the style and build the table
+    table.setStyle(table_style)
+    elements = [table]
+    pdf.build(elements)
+
+def create_pending_sheet1(df) : 
+    pdf = PDF()
+    pdf.set_top_margin(15)
+    pdf.set_auto_page_break(auto=True, margin=5)
+    pdf.set_font('Arial', '', 8)
+    pdf.add_page()
+    header_table = []
+
+    # pdf.cell(0, 10, "DEVAKI ENTERPRISES", 0, 0, 'L')
+    # pdf.ln()        
+    # header_table.append(["TIME",time,"","","VALUE",total_value])
+    # header_table.append(["SALESMAN",context["salesman"] ,"","","BEAT",context["beat"]])
+    # header_table.append(["PARTY",(context["party"] or "SALESMAN").ljust(34).upper(),"","","TOTAL CASE",str(int(total_fc or "0") + int(total_lc or "0"))])
+    # header_table.append(["BILL",context["inum"],"","","PHONE","9944833444"])
+    # df["Case"] = (df["FC"].apply(lambda x: int(x) if x else 0) + df["LC"].apply(lambda x: int(x) if x else 0)).astype(str).replace("0","")
+    # dfs = df[["No","Product Name","MRP","Case","Units","UPC","Gross Value"]]
+    # dfs.loc[len(dfs.index)] = ["","Total"] + [""] * 4 + [total_value]
+        
+    # header_table = pd.DataFrame(header_table,dtype="str",columns=["a","b","c","d","e","f"])
+    # print_table(pdf,header_table,border=0,print_header=False)
+    df = df.rename(columns = {"Bill Net Amt":"Bill","Collected Amount":"Coll","OutstANDing Amount":"Outstanding","Bill Ageing (In Days)":"Days","Sr No":" "})
+    df["Date"] = df["Date"].dt.strftime("%d/%m/%Y")
+    dfs = []
+    df = df.iloc[:-1]
+    for _,row in df.iterrows() : 
+        dfs.append([ row["Party Name"].split("-")[0], row["Date"] , row["Salesperson Name"].split("-")[1][:14] , row["Bill No"] , row["Days"] , " " ])
+        dfs.append([ "" , row["Bill"] , row["Coll"] , row["Outstanding"] , " " , " " ])
+
+    
+
+    # df["  "] = " "*6
+    # df["   "] = " "*6
+    df = pd.DataFrame(dfs,columns=[" "*20," "*10," "*15," "*10," "*10," "*10])
+    print_table(pdf,df,border = 0)
+    pdf.output("pending_sheet.pdf")
+    
