@@ -15,7 +15,7 @@
                 {% csrf_token %}
                 <div>
                     <label class="block text-gray-700 text-sm font-bold mb-2" for="bill_number">Bill Number</label>
-                    <input type="text" name="bill_number" id="bill_number" value="{{ loading_sheet_or_bill_no }}" readonly  
+                    <input type="text" name="bill_number" id="bill_number" value="{{ obj.bill_no }} {% if is_loading_sheet %} ({{ loading_sheet_or_bill_no }}) {% endif %}" readonly  
                         class="bg-gray-200 shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none">
                 </div>
                 <div>
@@ -110,7 +110,7 @@
                     const backCamera = videoInputDevices.find(device => device.label.toLowerCase().includes('back'));
                     const selectedDeviceId = backCamera ? backCamera.deviceId : videoInputDevices[0].deviceId;
                     codeReader.decodeOnceFromVideoDevice(selectedDeviceId, 'video').then((result) => {
-                        if (result.text === {{ loading_sheet_or_bill_no }}) {
+                        if (result.text === "{{ loading_sheet_or_bill_no }}") {
                             document.getElementById("pendingSheetForm").submit();
                         } else {
                             alert("Scanned code does not match the Bill Number. Please try again.");

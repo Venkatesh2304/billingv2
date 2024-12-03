@@ -283,6 +283,7 @@ class ScanPendingBills(View):
             context = { "obj":obj ,
                         "party_name":str(obj.bill.party),
                         "bill_amt" : round(-obj.bill.amt) , 
+                        "is_loading_sheet" : loading_sheet_or_bill_no != bill_no ,  
                         "loading_sheet_or_bill_no" : loading_sheet_or_bill_no}
             return render(request, 'scan_pending_bill/pending_bill.html',context)
         else :
