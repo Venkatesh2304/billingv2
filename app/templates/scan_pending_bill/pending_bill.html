@@ -116,7 +116,7 @@
             }
 
             // Step 3: If outstanding on bill is non-zero and payment mode is cash, open Aztec scanner
-            if (outstandingOnBill > 0 && (paymentMode === "cash") && ({{obj.b}})) {
+            if (outstandingOnBill > 0 && (paymentMode === "cash")) {
                 const codeReader = new ZXing.BrowserMultiFormatReader();
 
                 codeReader.listVideoInputDevices().then(videoInputDevices => {
