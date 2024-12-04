@@ -20,7 +20,6 @@ dnspython==2.6.1
 et-xmlfile==1.1.0
 etelemetry==0.3.1
 filelock==3.16.1
-fitz==0.0.1.dev2
 fpdf==1.7.2
 html5lib==1.1
 httplib2==0.22.0
