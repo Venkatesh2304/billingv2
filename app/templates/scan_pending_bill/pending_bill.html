@@ -115,7 +115,7 @@
                         if (result.text === "{{ loading_sheet_or_bill_no }}") {
                             document.getElementById("pendingSheetForm").submit();
                         } else {
-                            alert("Scanned code does not match the Bill Number. Please try again.");
+                            alert("Scanned code does not match the Bill Number. Please try again. \n" + result.text + " != {{loading_sheet_or_bill_no}}");
                             closeScanner();
                         }
                     }).catch((err) => {
