@@ -323,7 +323,7 @@ class ScanPendingBills(View):
             zero_outstanding = len(zero_outstanding_bills)
             cheque_neft = queryset.filter(payment_mode__in = "cheque/neft").count()
             resaon_counts = queryset.exclude(Q(bill_status__isnull = False) | Q(bill_status = "scanned")).values("bill_status").annotate(total = Count("bill_status")).values_list("bill_status","total")
-            resaon_counts = [("Cheque",cheque_neft )] + list(resaon_counts) + ["Zero Outstanding Bills",zero_outstanding]
+            resaon_counts = [("Cheque",cheque_neft )] + list(resaon_counts) + [("Zero Outstanding Bills",zero_outstanding)]
             
             alert_text = [("Not Checked Bills",not_checked), ("Checked Bills",checked), ("\\nBreakup of Checked Bills","\\n")]
             for reason,value in resaon_counts : alert_text.append((reason,value))
