@@ -42,7 +42,10 @@ cur = connection.cursor()
 # cur.execute("DELETE from app_chequedeposit")
 # fdg
 df = pd.read_sql(f"select * from app_pendingsheet",connection)
-print(df[df.date == datetime.date(2024,12,3)][["sheet_no","date"]]  )
+beats = pd.read_sql(f"select * from app_beat",connection)
+wednesday_beats = beats[beats.days.str.contains("wed",case=False)].id.to_list()
+models.Pend
+print(df[df.sheet_no.str.contains("PS03")][["sheet_no","date"]]  )
 print( pd.read_sql(f"select * from app_bill where bill_id='A60651'",connection).iloc[0]  )
 print( pd.read_sql(f"select * from app_collection where bill_id='A58562'",connection)  )
 print( pd.read_sql(f"select * from app_outstanding where inum='A58562'",connection)  )
