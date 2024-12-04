@@ -17,15 +17,15 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for bill_no, party_name , status in bills %}
+                    {% for bill_no, party_name , sheet , status in bills %}
                     <tr>
                         <td class="py-4 px-6 border-b">
-                            <a href="/scan_pending_bills?bill={{ bill_no }}&amp;sheet={{ sheet_no }}" class="text-blue-500 hover:text-blue-700 font-bold">
+                            <a href="/scan_pending_bills?bill={{ bill_no }}&amp;sheet={{ sheet }}" class="text-blue-500 hover:text-blue-700 font-bold">
                                 {{ bill_no }}
                             </a>
                         </td>
                         <td class="py-4 px-6 border-b">
-                            <a href="/scan_pending_bills?bill={{ bill_no }}&amp;sheet={{ sheet_no }}" class="text-green-500 hover:text-blue-700 font-bold">
+                            <a href="/scan_pending_bills?bill={{ bill_no }}&amp;sheet={{ sheet }}" class="text-green-500 hover:text-blue-700 font-bold">
                                 {{ party_name }}
                             </a>
                         </td>
