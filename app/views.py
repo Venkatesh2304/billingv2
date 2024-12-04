@@ -322,7 +322,8 @@ class ScanPendingBills(View):
             not_checked= len(bills_info) - checked 
             zero_outstanding = len(zero_outstanding_bills)
             cheque_neft = queryset.filter(payment_mode__in = "cheque/neft").count()
-            resaon_counts = queryset.exclude(Q(bill_status__isnull = False) | Q(bill_status = "scanned")).values("bill_status").annotate(count = Count("bill_status"))
+            resaon_counts = queryset.exclude(Q(bill_status__isnull = False) | Q(bill_status = "scanned")).count()
+            #.values("bill_status").annotate(count = Count("bill_status"))
 
             # resaon_counts = [ (row["bill_status"] , row["count"]) for row in resaon_counts ]
             # resaon_counts = [("Cheque",cheque_neft )] + resaon_counts + [("Zero Outstanding Bills",zero_outstanding)]
