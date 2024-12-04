@@ -181,6 +181,7 @@ class Collection( PartyVoucher ) :
       class Meta : 
             verbose_name_plural = 'Collection'
 
+
 class Adjustment( PartyVoucher ) : 
       inum = CharField(max_length=20)
       ##from_bill can be null in case of excess collection as the reason

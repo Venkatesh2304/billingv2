@@ -41,8 +41,10 @@ cur = connection.cursor()
 
 # cur.execute("DELETE from app_chequedeposit")
 # fdg
-print( pd.read_sql(f"select * from app_pendingsheet",connection)  )
+print( pd.read_sql(f"select * from app_sales where inum='A55082'",connection)  )
+print( pd.read_sql(f"select * from app_outstanding where inum='A55082'",connection)  )
 print( pd.read_sql(f"select * from app_pendingsheetbill",connection)  )
+
 dfg
 print( pd.read_sql(f"""select salesman_name as user , (select name from app_party where party_id = code) as party , inum as bill_no , -balance as amount  
               from app_outstanding left outer join app_beat on app_outstanding.beat = app_beat.name

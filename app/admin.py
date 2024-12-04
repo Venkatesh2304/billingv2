@@ -1,5 +1,5 @@
 import base64
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections import abc
 import datetime
 from functools import partial, update_wrapper
@@ -1446,6 +1446,27 @@ class BankStatementAdmin(CustomAdminModel) :
         model = models.Collection
         verbose_name_plural = "IKEA Pushed Collection"
     
+
+    def auto_find_upi(self,request,qs) :
+        qs = qs.filter(Q(type__isnull=True)|Q(type="upi")).values_list("amt","id","date")
+        date_amt_ids = defaultdict(lambda : defaultdict(list) )
+        
+        for amt,id,bank_date in qs : 
+            date_amt_ids[bank_date][amt].append(id)
+        
+        dates = list(date_amt_ids.keys())
+        matched_bank_ids = []
+        for date in dates :
+            coll_upi_amts = models.Collection.objects.filter(date = date,mode="UPI").values_list("amt")
+            coll_upi_amts = Counter(coll_upi_amts)
+            for amt,times in coll_upi_amts : 
+                if len(date_amt_ids[date][amt]) == times : #Matched 
+                    matched_bank_ids
+
+
+        
+        bank_entries = models.BankStatement.objects.filter(type__isnull=True)
+        for bank_entry in bank_entries : pass
 
     def get_inlines(self, request, obj = None):
         if self.has_change_permission(request,obj) : 
