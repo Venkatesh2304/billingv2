@@ -300,7 +300,7 @@ class ScanPendingBills(View):
                     obj.outstanding_on_sheet = 0
                     obj.save() 
 
-            bills_info = [(obj.bill, obj.bill.party.name , bool(obj.outstanding_on_bill is not None)) for obj in queryset]
+            bills_info = [(obj.bill, obj.bill.party.name , obj.status()) for obj in queryset]
             return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "sheet_no" : sheet_no})
 
         else :

@@ -383,6 +383,9 @@ class PendingSheetBill(models.Model) :
     class Meta : 
           unique_together = ('sheet', 'bill')
 
+    def status(self) : 
+        return bool(self.outstanding_on_bill is not None)
+
 
 class SalesmanCollectionBill(models.Model) : 
     chq = ForeignKey("app.SalesmanCollection",on_delete=models.CASCADE,related_name="bills")
