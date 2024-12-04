@@ -304,18 +304,22 @@ class ScanPendingBills(View):
                     obj.save() 
 
             bills_info = [(obj.bill, obj.bill.party.name , obj.sheet_id , obj.status()) for obj in queryset]
-            return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info})
+            return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info,"extra_script" :""})
 
         elif date : 
             date = datetime.datetime.strptime(date,"%Y-%m-%d")
             sheets = models.PendingSheet.objects.filter(sheet_no__startswith="PS" + date.strftime("%d%m%y")).all()
             queryset = list(models.PendingSheetBill.objects.filter(sheet__in=sheets).all())
             bills_info = [(obj.bill, obj.bill.party.name , obj.sheet_id ,  obj.status()) for obj in queryset]
-            bills_info = sorted(bills_info,key=lambda x : x[3] )
-            return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info })
-        
+            bills_info = sorted(bills_info,key=lambda x : x[3])
+            success = sum([ i[3] for i in bills_info ])
+            failed = len(bills_info) - success
+            extra_script = mark_safe("window.alert('Checked Bills : " + str(success) + "\\n Not Checked Bills : " + str(failed) + "')")
+            return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "extra_script" : extra_script })
         else :
-            return render(request, 'scan_pending_bill/select_pending_sheet.html')
+            yesterday = datetime.date.today() - datetime.timedelta(days=1)
+            recent_dates = [yesterday - datetime.timedelta(days=i) for i in range(4)]
+            return render(request, 'scan_pending_bill/select_pending_sheet.html',{"recent_dates" : recent_dates})
 
     def post(self, request):
         # Extract pending sheet number from POST request
