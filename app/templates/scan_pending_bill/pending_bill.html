@@ -62,6 +62,17 @@
                         <option value="neft" {% if obj.payment_mode == "neft" %}selected{% endif %}>NEFT</option>
                     </select>
                 </div>
+                <div>
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="reason">Payment Mode</label>
+                    <select name="bill_status" id="bill_status" class="border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                        <option value="scanned" {% if obj.bill_status == "scanned" %} selected{% endif %}>Scanned</option>
+                        <option value="qrcode_not_found" {% if obj.bill_status == "qrcode_not_found" %}selected{% endif %}>QR code not found</option>
+                        <option value="loading_sheet" {% if obj.bill_status == "loading_sheet" %}selected{% endif %}>Salesman Loading Sheet</option>
+                        <option value="sales_return" {% if obj.bill_status == "sales_return" %}selected{% endif %}>Sales Return</option>
+                        <option value="others" {% if obj.bill_status == "others" %}selected{% endif %}>Other Reason</option>
+                    </select>
+                </div>
+                
                 <div class="flex items-center justify-center mt-4">
                     <button type="button" onclick="validateForm()" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
                         Submit
@@ -105,17 +116,19 @@
             }
 
             // Step 3: If outstanding on bill is non-zero and payment mode is cash, open Aztec scanner
-            if (outstandingOnBill > 0 && paymentMode === "cash") {
+            if (outstandingOnBill > 0 && (paymentMode === "cash") && ({{obj.b}})) {
                 const codeReader = new ZXing.BrowserMultiFormatReader();
 
                 codeReader.listVideoInputDevices().then(videoInputDevices => {
                     const backCamera = videoInputDevices.find(device => device.label.toLowerCase().includes('back'));
                     const selectedDeviceId = backCamera ? backCamera.deviceId : videoInputDevices[0].deviceId;
                     codeReader.decodeOnceFromVideoDevice(selectedDeviceId, 'video').then((result) => {
-                        if (result.text === "{{ loading_sheet_or_bill_no }}") {
+                        const bill_no1 = result.text.match(/\d+/g)[0]
+                        const bill_no2 = "{{ loading_sheet_or_bill_no }}".match(/\d+/g)[0]
+                        if (bill_no1 === bill_no2) {
                             document.getElementById("pendingSheetForm").submit();
                         } else {
-                            alert("Scanned code does not match the Bill Number. Please try again. \n" + result.text + " != {{loading_sheet_or_bill_no}}");
+                            alert("Scanned code does not match the Bill Number. Please try again. \n" + bill_no1 + " != " +bill_no2);
                             closeScanner();
                         }
                     }).catch((err) => {

@@ -181,7 +181,6 @@ class Collection( PartyVoucher ) :
       class Meta : 
             verbose_name_plural = 'Collection'
 
-
 class Adjustment( PartyVoucher ) : 
       inum = CharField(max_length=20)
       ##from_bill can be null in case of excess collection as the reason
@@ -377,8 +376,9 @@ class PendingSheetBill(models.Model) :
     outstanding_on_sheet = models.IntegerField(null=True)
     payment_mode = models.TextField(max_length=15,choices=(("cash","Cash"),("cheque","Cheque"),("neft","NEFT")),null=True)
     bill_status = models.TextField(max_length=25,choices=(("scanned","Scanned"),
-                                                          ("cheque/neft","Bill in Shop For Cheque/NEFT"),
-                                                          ("paid","Paid"),
+                                                          ("qrcode_not_found","qrcode_not_found"),
+                                                          ("loading_sheet","loading_sheet"),
+                                                          ("sales_return","sales_return"),
                                                           ("others","Other Reason"),
                                                           ),null=True)
     class Meta : 

@@ -42,7 +42,8 @@ cur = connection.cursor()
 # cur.execute("DELETE from app_chequedeposit")
 # fdg
 print( pd.read_sql(f"select * from app_sales where inum='A55082'",connection)  )
-print( pd.read_sql(f"select * from app_outstanding where inum='A55082'",connection)  )
+print( pd.read_sql(f"select * from app_collection where bill_id='A58562'",connection)  )
+print( pd.read_sql(f"select * from app_outstanding where inum='A58562'",connection)  )
 print( pd.read_sql(f"select * from app_pendingsheetbill",connection)  )
 
 dfg

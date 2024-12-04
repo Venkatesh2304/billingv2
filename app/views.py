@@ -142,7 +142,7 @@ def get_bill_in(request,delivery_date = datetime.date.today()):
     qs = models.Bill.objects.filter(delivered_time__date__gte =  delivery_date , vehicle = vehicle)
     bills = list(qs.filter(loading_sheet__isnull=True).values_list("loading_time","bill_id","bill__party__name"))
     ls = list(set(qs.filter(loading_sheet__isnull=False).values_list("loading_time","loading_sheet","loading_sheet__party")))
-    sorted_all_bills = sorted(bills + ls, key=lambda x: x[0], reverse=True)
+    sorted_all_bills = sorted(bills + ls, key=lambda x: x[0] or datetime.datetime(2024,4,1,0,0,0), reverse=True)
     sorted_all_bills = [ (bill,party) for time,bill,party in sorted_all_bills ] 
     delivered_bills = sorted_all_bills
     
@@ -315,6 +315,7 @@ class ScanPendingBills(View):
         obj.payment_mode = request.POST.get('payment_mode')
         obj.outstanding_on_sheet = request.POST.get('outstanding_on_sheet')
         obj.outstanding_on_bill = request.POST.get('outstanding_on_bill')
+        obj.bill_status = request.POST.get('bill_status')
         obj.save()
         return redirect(f"/scan_pending_bills?sheet={pending_sheet_no}")
         
