@@ -276,6 +276,7 @@ class ScanPendingBills(View):
     def get(self, request):
         bill_no = request.GET.get("bill",None)
         sheet_no = request.GET.get("sheet",None)
+
         if bill_no : 
             obj = models.PendingSheetBill.objects.get(sheet_id=sheet_no,bill_id=bill_no)
             obj.outstanding_on_ikea = -round(models.Outstanding.objects.get(inum=bill_no).balance)
@@ -292,7 +293,13 @@ class ScanPendingBills(View):
             if sheet_no and not sheet_no.startswith('PS'):
                 sheet_no = 'PS' + sheet_no  # Add PS prefix if not present
 
-            queryset = models.PendingSheetBill.objects.filter(sheet_id=sheet_no).all()
+            queryset = list(models.PendingSheetBill.objects.filter(sheet_id=sheet_no).all())
+            for obj in queryset : 
+                if abs(models.Outstanding.objects.get(inum=obj.bill_id).balance) < 1 : 
+                    obj.outstanding_on_bill = 0 
+                    obj.outstanding_on_sheet = 0
+                    obj.save() 
+
             bills_info = [(obj.bill, obj.bill.party.name , bool(obj.outstanding_on_bill is not None)) for obj in queryset]
             return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "sheet_no" : sheet_no})
 

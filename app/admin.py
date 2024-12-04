@@ -1771,11 +1771,11 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
 
     @admin.action(description='Download Pending Sheet')
     def download_pending_sheet(self,request,queryset) : 
+        date = datetime.datetime.strptime(request.POST.get("date"),"%Y-%m-%d").date()
         beat_ids = { str(id) for id in queryset.values_list("id",flat=True) }
         beat_maps = { beat.name : (beat.salesman_name,beat.id) for beat in queryset.all() }
         billing = Billing()
-        date = datetime.date.today()
-        bytesio = billing.pending_statement_excel(beat_ids,date)
+        bytesio = billing.pending_statement_excel(beat_ids,date - datetime.timedelta(days=1)) #Dont consider bills on the same date
         df = pd.read_excel(bytesio,skiprows = 13,skipfooter=1)
         df = df.dropna(subset = "Beat Name")
         df["Salesperson Name"] = df["Salesperson Name"].str.split("-").str[1]
@@ -1786,6 +1786,7 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
             rows = rows.sort_values(by = ["max_days_per_party","Party Name"] , ascending=False)
             salesman,beat_id = beat_maps[beat]
             sheet_no = "PS" + date.strftime("%d%m%y") + str(beat_id)
+            models.PendingSheetBill.objects.filter(sheet_id = sheet_no).delete()
             models.PendingSheet(sheet_no=sheet_no,beat=beat,salesman=salesman,date=date).save()
             rows["sheet_id"] = sheet_no 
             renamed_rows = rows.rename(columns={"Bill No":"bill_id","OutstANDing Amount":"outstanding_amt","Bill Ageing (In Days)" : "days"})
