@@ -323,13 +323,15 @@ class ScanPendingBills(View):
             zero_outstanding = len(zero_outstanding_bills)
             cheque_neft = queryset.filter(payment_mode__in = "cheque/neft").count()
             resaon_counts = queryset.exclude(Q(bill_status__isnull = False) | Q(bill_status = "scanned")).values("bill_status").annotate(count = Count("bill_status"))
-            resaon_counts = [ (row["bill_status"] , row["count"]) for row in resaon_counts ]
-            resaon_counts = [("Cheque",cheque_neft )] + resaon_counts + [("Zero Outstanding Bills",zero_outstanding)]
-            
-            alert_text = [("Not Checked Bills",not_checked), ("Checked Bills",checked), ("\\nBreakup of Checked Bills","\\n")]
-            for reason,value in resaon_counts : alert_text.append((reason,value))
 
-            alert_text = "\\n".join( f"{k}: {v}" for k,v in alert_text )
+            # resaon_counts = [ (row["bill_status"] , row["count"]) for row in resaon_counts ]
+            # resaon_counts = [("Cheque",cheque_neft )] + resaon_counts + [("Zero Outstanding Bills",zero_outstanding)]
+            
+            # alert_text = [("Not Checked Bills",not_checked), ("Checked Bills",checked), ("\\nBreakup of Checked Bills","\\n")]
+            # for reason,value in resaon_counts : alert_text.append((reason,value))
+
+            # alert_text = "\\n".join( f"{k}: {v}" for k,v in alert_text )
+            alert_text =  "1"
             extra_script = mark_safe(f"window.alert('{alert_text}')")
             return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "extra_script" : extra_script , "x" : resaon_counts })
         else :
