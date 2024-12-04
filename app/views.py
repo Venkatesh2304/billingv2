@@ -275,6 +275,7 @@ def force_sales_sync(request) :
 
 
 class ScanPendingBills(View):
+
     def get(self, request):
         bill_no = request.GET.get("bill",None)
         sheet_no = request.GET.get("sheet",None)
@@ -317,7 +318,7 @@ class ScanPendingBills(View):
             extra_script = mark_safe("window.alert('Checked Bills : " + str(success) + "\\n Not Checked Bills : " + str(failed) + "')")
             return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "extra_script" : extra_script })
         else :
-            yesterday = datetime.date.today() - datetime.timedelta(days=1)
+            yesterday = datetime.date.today() - datetime.timedelta(days=0)
             recent_dates = [yesterday - datetime.timedelta(days=i) for i in range(4)]
             return render(request, 'scan_pending_bill/select_pending_sheet.html',{"recent_dates" : recent_dates})
 
