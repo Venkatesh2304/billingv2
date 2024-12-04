@@ -366,7 +366,7 @@ class BankStatement(models.Model) :
 
 class PendingSheet(models.Model) : 
     sheet_no = models.CharField(max_length=20,primary_key=True)
-    date = models.DateField(auto_now_add=True)
+    date = models.DateField()
     salesman = models.TextField(max_length=30)
     beat = models.TextField(max_length=30)
 

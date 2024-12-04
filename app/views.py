@@ -309,7 +309,7 @@ class ScanPendingBills(View):
 
         elif date : 
             date = datetime.datetime.strptime(date,"%Y-%m-%d")
-            sheets = models.PendingSheet.objects.filter(sheet_no__startswith="PS" + date.strftime("%d%m%y")).all()
+            sheets = models.PendingSheet.objects.filter(date = date).all()
             queryset = list(models.PendingSheetBill.objects.filter(sheet__in=sheets).all())
             bills_info = [(obj.bill, obj.bill.party.name , obj.sheet_id ,  obj.status()) for obj in queryset]
             bills_info = sorted(bills_info,key=lambda x : x[3])
