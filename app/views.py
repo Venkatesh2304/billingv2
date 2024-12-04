@@ -22,6 +22,7 @@ from openpyxl import load_workbook
 from app import models
 from django.utils.safestring import mark_safe
 from django.views import View
+from django.db.models import Count
 
 def basepack(request) :
     ikea = Billing()
@@ -320,7 +321,7 @@ class ScanPendingBills(View):
             checked = sum([ i[3] for i in bills_info ])
             zero_outstanding = len(zero_outstanding_bills)
             cheque_neft = queryset.filter(payment_mode__in = "cheque/neft").count()
-            resaon_counts = queryset.filter(bill_status__isnull = False).values("bill_status").count()
+            resaon_counts = queryset.filter(bill_status__isnull = False).values("bill_status").aggregate(total = Count("bill_status"))
             not_checked= len(bills_info) - checked 
             print( 1, zero_outstanding )
             print( 2, cheque_neft )
