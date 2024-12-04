@@ -41,7 +41,8 @@ cur = connection.cursor()
 
 # cur.execute("DELETE from app_chequedeposit")
 # fdg
-print( pd.read_sql(f"select * from app_pendingsheet",connection)[["sheet_no","date"]].drop_duplicates()  )
+df = pd.read_sql(f"select * from app_pendingsheet",connection)
+print(df[df.date == datetime.date(2024,12,3)][["sheet_no","date"]]  )
 print( pd.read_sql(f"select * from app_bill where bill_id='A60651'",connection).iloc[0]  )
 print( pd.read_sql(f"select * from app_collection where bill_id='A58562'",connection)  )
 print( pd.read_sql(f"select * from app_outstanding where inum='A58562'",connection)  )
