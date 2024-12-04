@@ -329,7 +329,7 @@ class ScanPendingBills(View):
             
             extra_script = mark_safe("window.alert('Checked Bills : " + str(checked) + "\\n" + str(resaon_counts) +  "\\n Not Checked Bills : " + str(not_checked) + "')")
             
-            return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "extra_script" : extra_script })
+            return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "extra_script" : extra_script , "x" : resaon_counts })
         else :
             yesterday = datetime.date.today() - datetime.timedelta(days=0)
             recent_dates = [yesterday - datetime.timedelta(days=i) for i in range(4)]
