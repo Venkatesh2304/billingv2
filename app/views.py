@@ -280,6 +280,7 @@ class ScanPendingBills(View):
         qs = models.Outstanding.objects.filter(inum__in =queryset.values_list("bill_id",flat=True))
         zero_outstanding_bills = qs.filter(balance__gte = -1).values_list("inum",flat=True)
         queryset.filter(bill_id__in = zero_outstanding_bills).update(outstanding_on_bill = 0,outstanding_on_sheet = 0)
+        return zero_outstanding_bills
     
     def get(self, request):
         bill_no = request.GET.get("bill",None)
@@ -312,12 +313,21 @@ class ScanPendingBills(View):
             date = datetime.datetime.strptime(date,"%Y-%m-%d")
             sheets = models.PendingSheet.objects.filter(date = date).all()
             queryset = models.PendingSheetBill.objects.filter(sheet__in=sheets).all()
-            self.change_status_to_checked_for_zero_outstanding(queryset)
-            bills_info = [(obj.bill, obj.bill.party.name , obj.sheet_id ,  obj.status()) for obj in queryset]
+            zero_outstanding_bills = self.change_status_to_checked_for_zero_outstanding(queryset)
+            bills_info = [(obj.bill, obj.bill.party.name , obj.sheet_id ,  obj.status() ) for obj in queryset]
             bills_info = sorted(bills_info,key=lambda x : x[3])
-            success = sum([ i[3] for i in bills_info ])
-            failed = len(bills_info) - success
-            extra_script = mark_safe("window.alert('Checked Bills : " + str(success) + "\\n Not Checked Bills : " + str(failed) + "')")
+            
+            checked = sum([ i[3] for i in bills_info ])
+            zero_outstanding = len(zero_outstanding_bills)
+            cheque_neft = queryset.filter(payment_mode__in = "cheque/neft").count()
+            resaon_counts = queryset.filter(bill_status__isnull = False).values("bill_status").count()
+            not_checked= len(bills_info) - checked 
+            print( 1, zero_outstanding )
+            print( 2, cheque_neft )
+            print( 3, resaon_counts )
+            
+            extra_script = mark_safe("window.alert('Checked Bills : " + str(checked) + "\\n Not Checked Bills : " + str(not_checked) + "')")
+            
             return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "extra_script" : extra_script })
         else :
             yesterday = datetime.date.today() - datetime.timedelta(days=0)
