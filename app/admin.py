@@ -891,7 +891,7 @@ class PrintAdmin(CustomAdminModel) :
         PrintType.FIRST_COPY: {
             'create_bill': lambda billing, group, context,cash_bills : 
                      billing.Download(bills=group,pdf=True, txt=False,cash_bills=cash_bills) or 
-                    #  pdf_create.remove_blank_pages_from_first_copy("bill.pdf") or 
+                     pdf_create.remove_blank_pages_from_first_copy("bill.pdf") or 
                     aztec.add_aztec_codes_to_pdf("bill.pdf","bill.pdf",PrintType.FIRST_COPY) ,
             'file_names': "bill.pdf",
             'update_fields': lambda context : {'print_type': PrintType.FIRST_COPY.value} ,

@@ -6,7 +6,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle , Spacer
 from reportlab.lib import colors
 from enum import Enum 
-import fitz 
+import pymupdf
 
 # Set font size and cell height
 S = 10  # Font size
@@ -223,8 +223,8 @@ def pending_sheet_pdf(df, sheet_no ,salesman,beat,date):
     return bytesio 
 
 def remove_blank_pages_from_first_copy(pdf_path, blank_threshold=640):
-    doc = fitz.open(pdf_path)
-    output_pdf = fitz.open()  # Create a new PDF document
+    doc = pymupdf.open(pdf_path)
+    output_pdf = pymupdf.open()  # Create a new PDF document
 
     for page_num in range(len(doc)):
         page = doc[page_num]
