@@ -44,7 +44,6 @@ cur = connection.cursor()
 df = pd.read_sql(f"select * from app_pendingsheet",connection)
 beats = pd.read_sql(f"select * from app_beat",connection)
 wednesday_beats = beats[beats.days.str.contains("wed",case=False)].id.to_list()
-models.Pend
 print(df[df.sheet_no.str.contains("PS03")][["sheet_no","date"]]  )
 print( pd.read_sql(f"select * from app_bill where bill_id='A60651'",connection).iloc[0]  )
 print( pd.read_sql(f"select * from app_collection where bill_id='A58562'",connection)  )
