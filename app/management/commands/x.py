@@ -41,18 +41,17 @@ cur = connection.cursor()
 
 # cur.execute("DELETE from app_chequedeposit")
 # fdg
-df = pd.read_sql(f"select * from app_pendingsheet",connection)
-beats = pd.read_sql(f"select * from app_beat",connection)
-wednesday_beats = beats[beats.days.str.contains("wed",case=False)].name.to_list()
-df = df[df.beat.isin(wednesday_beats)]
-c = 0  
-for sheet in df["sheet_no"].unique() :
-    print(c + 1 , sheet )
-    input("wait :")
-    PendingSheet.objects.filter(sheet_no = sheet).update(date = datetime.date.today())
-    c += 1 
-
-print(c)
+# df = pd.read_sql(f"select * from app_pendingsheet",connection)
+# beats = pd.read_sql(f"select * from app_beat",connection)
+# wednesday_beats = beats[beats.days.str.contains("wed",case=False)].name.to_list()
+# df = df[df.beat.isin(wednesday_beats)]
+# c = 0  
+# for sheet in df["sheet_no"].unique() :
+#     print(c + 1 , sheet )
+#     input("wait :")
+#     PendingSheet.objects.filter(sheet_no = sheet).update(date = datetime.date.today())
+#     c += 1 
+# print(c)
 
 print(df[df.sheet_no.str.contains("PS03")][["sheet_no","date"]]  )
 print(df[df.sheet_no.str.contains("PS04")][["sheet_no","date"]]  )
