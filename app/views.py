@@ -326,7 +326,7 @@ class ScanPendingBills(View):
             print( 2, cheque_neft )
             print( 3, resaon_counts )
             
-            extra_script = mark_safe("window.alert('Checked Bills : " + str(checked) + "\\n Not Checked Bills : " + str(not_checked) + "')")
+            extra_script = mark_safe("window.alert('Checked Bills : " + str(checked) + "\\n" + str(resaon_counts) +  "\\n Not Checked Bills : " + str(not_checked) + "')")
             
             return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "extra_script" : extra_script })
         else :
