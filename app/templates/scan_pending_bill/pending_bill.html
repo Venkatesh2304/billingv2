@@ -100,6 +100,7 @@
             const outstandingOnIkea = parseFloat(document.getElementById("outstanding_on_ikea").value) || 0;
             const paymentMode = document.getElementById("payment_mode").value;
             const billNumber = document.getElementById("bill_number").value;
+            const billStatus = document.getElementById("bill_status").value;
 
             // Step 1: Check if outstanding on bill and sheet are equal
             if (outstandingOnBill !== outstandingOnSheet) {
@@ -116,7 +117,7 @@
             }
 
             // Step 3: If outstanding on bill is non-zero and payment mode is cash, open Aztec scanner
-            if (outstandingOnBill > 0 && (paymentMode === "cash")) {
+            if (outstandingOnBill > 0 && (paymentMode === "cash") && (billStatus === "scanned")) {
                 const codeReader = new ZXing.BrowserMultiFormatReader();
 
                 codeReader.listVideoInputDevices().then(videoInputDevices => {
