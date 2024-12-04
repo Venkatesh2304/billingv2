@@ -29,7 +29,7 @@ pd.options.display.float_format = '{:.2f}'.format
 
 
 # exit(0)
-from app.models import Orders,OrderProducts
+from app.models import Orders,OrderProducts,PendingSheet
 cur = connection.cursor()
 # cur.execute("update app_bill set loading_sheet_id = NULL where loading_sheet_id = 'SMA59361'")
 # cur.execute("DELETE from app_salesmanloadingsheet where inum = 'SMA59361'")
@@ -43,7 +43,17 @@ cur = connection.cursor()
 # fdg
 df = pd.read_sql(f"select * from app_pendingsheet",connection)
 beats = pd.read_sql(f"select * from app_beat",connection)
-wednesday_beats = beats[beats.days.str.contains("wed",case=False)].id.to_list()
+wednesday_beats = beats[beats.days.str.contains("wed",case=False)].name.to_list()
+df = df[df.beat.isin(wednesday_beats)]
+c = 0  
+for sheet in df["sheet_no"].unique() :
+    print(c + 1 , sheet )
+    input("wait :")
+    PendingSheet.objects.filter(sheet_no = sheet).update(date = datetime.date.today())
+    c += 1 
+
+print(c)
+
 print(df[df.sheet_no.str.contains("PS03")][["sheet_no","date"]]  )
 print(df[df.sheet_no.str.contains("PS04")][["sheet_no","date"]]  )
 print(df[df.sheet_no.str.contains("PS05")][["sheet_no","date"]]  )
