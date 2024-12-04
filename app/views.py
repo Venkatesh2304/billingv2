@@ -311,7 +311,7 @@ class ScanPendingBills(View):
             sheets = models.PendingSheet.objects.filter(sheet_no__startswith="PS" + date.strftime("%d%m%y")).all()
             queryset = list(models.PendingSheetBill.objects.filter(sheet__in=sheets).all())
             bills_info = [(obj.bill, obj.bill.party.name , obj.sheet_id ,  obj.status()) for obj in queryset]
-            bills_info = sorted(bills_info,key=lambda x : x[3],reverse=True)
+            bills_info = sorted(bills_info,key=lambda x : x[3] )
             return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info })
         
         else :
