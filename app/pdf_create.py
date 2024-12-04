@@ -206,13 +206,13 @@ def pending_sheet_pdf(df, sheet_no ,salesman,beat,date):
 
     table.setStyle(table_style)
     total_outstanding = round(df["Outstanding"].astype(float).sum())
-    count_table = [("Total Bill Count",len(df.index)),("Returned Bill"," "),
-                   ("Total Outstanding",total_outstanding),("Total Collection"," ")]
+    count_table = [("Bills",len(df.index)),("Return"," "),
+                   ("Out Amt",total_outstanding),("Coll Amt"," ")]
     denomination_data1 = [(500,"","") , (200,"","") , (100,"","") , (50,"","") ] 
     denomination_data2 = [(20,"","") , (10,"","") ,("Coins","",""),("Total","","")] 
-    common_style = TableStyle([ ('GRID', (0, 0), (-1, -1), 1, colors.black) ])
-    widths = [total_width/15,total_width/10,total_width/9]
-    c = Table(count_table, colWidths=[total_width/5,total_width/10],style=common_style)
+    common_style = TableStyle([ ('GRID', (0, 0), (-1, -1), 1, colors.black) , ('TOPPADDING',(0,0),(-1,-1),20) ])
+    widths = [total_width/15,total_width/10,total_width/4]
+    c = Table(count_table, colWidths=[total_width/10,total_width/10],style=common_style)
     d1 = Table(denomination_data1, colWidths=widths,style=common_style)
     d2 = Table(denomination_data2, colWidths=widths,style=common_style)
     combined_table = [[c , d1 , d2]]

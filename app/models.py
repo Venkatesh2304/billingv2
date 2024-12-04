@@ -380,7 +380,7 @@ class PendingSheetBill(models.Model) :
                                                           ("loading_sheet","loading_sheet"),
                                                           ("sales_return","sales_return"),
                                                           ("others","Other Reason"),
-                                                          ),null=True)
+                                                          ),null=True,default="scanned")
     class Meta : 
           unique_together = ('sheet', 'bill')
 
