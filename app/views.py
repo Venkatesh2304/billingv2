@@ -278,6 +278,7 @@ class ScanPendingBills(View):
     def get(self, request):
         bill_no = request.GET.get("bill",None)
         sheet_no = request.GET.get("sheet",None)
+        date = request.GET.get("date",None)
 
         if bill_no : 
             obj = models.PendingSheetBill.objects.get(sheet_id=sheet_no,bill_id=bill_no)
@@ -305,6 +306,13 @@ class ScanPendingBills(View):
             bills_info = [(obj.bill, obj.bill.party.name , obj.status()) for obj in queryset]
             return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "sheet_no" : sheet_no})
 
+        elif date : 
+            date = datetime.datetime.strptime(date,"%Y-%m-%d")
+            queryset = list(models.PendingSheetBill.objects.filter(sheet__date=date).all())
+            bills_info = [(obj.bill, obj.bill.party.name , obj.status()) for obj in queryset]
+            bills_info = sorted(bills_info,key=lambda x : x[2],reverse=True)
+            return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "sheet_no" : date})
+        
         else :
             return render(request, 'scan_pending_bill/select_pending_sheet.html')
 
