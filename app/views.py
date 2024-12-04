@@ -319,16 +319,16 @@ class ScanPendingBills(View):
             bills_info = sorted(bills_info,key=lambda x : x[3])
             
             checked = sum([ i[3] for i in bills_info ])
+            not_checked= len(bills_info) - checked 
             zero_outstanding = len(zero_outstanding_bills)
             cheque_neft = queryset.filter(payment_mode__in = "cheque/neft").count()
-            resaon_counts = queryset.filter(bill_status__isnull = False).values("bill_status").annotate(total = Count("bill_status")).values_list("bill_status","total")
-            not_checked= len(bills_info) - checked 
-            print( 1, zero_outstanding )
-            print( 2, cheque_neft )
-            print( 3, resaon_counts )
+            resaon_counts = queryset.exclude(Q(bill_sottatus__isnull = False) | Q(bill_status = "scanned")).values("bill_status").annotate(total = Count("bill_status")).values_list("bill_status","total")
+            resaon_counts = {"Cheque" : cheque_neft } | dict(resaon_counts) | {"Zero Outstanding Bills" : zero_outstanding}
             
-            extra_script = mark_safe("window.alert('Checked Bills : " + str(checked) + "\\n" + str(resaon_counts) +  "\\n Not Checked Bills : " + str(not_checked) + "')")
-            
+            alert_text = [("Not Checked Bills",not_checked), ("Checked Bills",checked), ("Breakup of Checked Bills","")]
+            for reason,value in resaon_counts.items() : alert_text.append((reason,value))
+            alert_text = "\\n".join( f"{k}: {v}" for k,v in alert_text )
+            extra_script = mark_safe(f"window.alert('{alert_text}')")
             return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "extra_script" : extra_script , "x" : resaon_counts })
         else :
             yesterday = datetime.date.today() - datetime.timedelta(days=0)
