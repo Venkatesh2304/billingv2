@@ -1647,7 +1647,6 @@ class BankCollectionAdmin(CustomAdminModel) :
     def changelist_view(self, request: HttpRequest, extra_context = {}) -> TemplateResponse:
         return super().changelist_view(request, {"title" : "Push Pending Collection to IKEA"} | extra_context)
     
-
 ProcessStatus = IntEnum("ProcessStatus",(("NotStarted",0),("Success",1),("Started",2),("Failed",3)))
 
 class BasepackAdmin(BaseProcessStatusAdmin) : 
@@ -1780,7 +1779,6 @@ class BasepackAdmin(BaseProcessStatusAdmin) :
         refresh_time = 20000 if self.basepack_lock.locked() else 1e7 
         return super().changelist_view(request, extra_context | {"refresh_time" : refresh_time , "form" : form, "title" : "" })
 
-
 class SalesmanPendingSheetAdmin(CustomAdminModel) :
      
     change_list_template = "form_and_changelist.html"
@@ -1854,9 +1852,6 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
         return super().changelist_view(request, extra_context | {"form" : form,"title":"",
                                                                  "form_style":"margin-bottom:50px;border:2px solid"})
     
-
-
-
 class SettingsAdmin(CustomAdminModel) :
     permissions = [Permission.change,Permission.add]
     list_display_links = ["key"]

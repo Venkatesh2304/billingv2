@@ -161,12 +161,14 @@ def get_bill_data(request):
         if len(inum) == 5 : inum = "A" + inum 
         vehicle = data.get("vehicle")
         bill_type = data.get("type")
+        delivery_reason = data.get("delivery_reason")
         failure_reason = request.FILES.get("audio")
 
         extra_txt = ""
         configs = {
             "loading": {"update_fields": {"vehicle_id": vehicle, "loading_time": datetime.datetime.now()}},
-            "delivery_success": {"update_fields": {"vehicle_id": vehicle, "delivered": True, "delivered_time": datetime.datetime.now()}},
+            "delivery_success": {"update_fields": {"vehicle_id": vehicle, "delivered": True, "delivered_time": datetime.datetime.now(),
+                                                   "delivery_reason": delivery_reason }},
             "delivery_failed": {"update_fields": {"vehicle_id": vehicle, "delivered": False, "delivered_time": datetime.datetime.now()}}
         }
 

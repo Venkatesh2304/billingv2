@@ -30,10 +30,21 @@
 
     <!-- Manual Input Section -->
     <div id="manual-input-section" class="bg-white shadow-md rounded-md p-4 w-full max-w-lg mt-4">
-        <label for="manual-code" class="block text-gray-700 font-medium mb-2">Manual Bill Entry</label>
-        <div class="flex items-center space-x-2">
-            <input type="text" id="manual-code" placeholder="Enter Bill Number"
+        {% comment %} <label for="manual-code" class="block text-gray-700 font-medium mb-2">Manual Bill Entry</label> {% endcomment %}
+        <div class="flex items-center space-x-5">
+            <div class="flex flex-col items-center space-y-2"> 
+                <input type="text" id="manual-code" placeholder="Enter Bill/Loading Number"
                    class="flex-1 p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-400 focus:outline-none">
+            {% if type == "delivery_success" %} 
+                <select name="delivery_reason" id="delivery_reason" class="border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                    <option value="choose" disabled="disabled" selected>  Choose Reason </option>
+                    <option value="cash_bill_success">Cash Bill (Collected)</option>
+                    <option value="bill_with_shop" >Bill With Shop</option>
+                    <option value="bill_return">Bill Return</option>
+                    <option value="qrcode_not_found">QR Code Not Found</option>
+                </select>
+            {% endif %}
+            </div>
             <button id="manual-submit-btn"
                     class="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 focus:ring-2 focus:ring-blue-400 focus:outline-none">
                 Load Bill
@@ -128,10 +139,11 @@
                     const scannedBarcode = result.text;
                     document.getElementById('result').innerText = 'Scanning: ' + scannedBarcode;
                     codeReader.reset();
-                    sendPostRequest(String(scannedBarcode));
+                    sendPostRequest(String(scannedBarcode),"scanner");
                 }
 
                 if (err && scanning) {
+
                     console.error(err);
                 }
             });
@@ -141,13 +153,24 @@
             const manualCode = document.getElementById('manual-code').value;
             if (manualCode) {
                 sendPostRequest(manualCode);
+                document.getElementById("delivery_reason").value = "choose" 
             } else {
                 alert("Please enter a code to submit.");
             }
         });
 
-        function sendPostRequest(code) {
-            const data = { inum: code, vehicle: "{{ selected_vehicle }}", type: "{{ type }}" };
+        function sendPostRequest(code,type = "manual") {
+            var delivery_reason =  null ; 
+            {% if type == "delivery_success" %} 
+                if ( type == "manual") {
+                    delivery_reason = document.getElementById("delivery_reason").value 
+                    if (delivery_reason == "choose") { 
+                        alert("Choose Reason"); 
+                        return ; 
+                    }
+                }
+            {% endif %}
+            const data = { inum: code, vehicle: "{{ selected_vehicle }}", type: "{{ type }}" , delivery_reason: delivery_reason };
             const formData = new FormData();
             formData.append('data', JSON.stringify(data));
            

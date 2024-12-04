@@ -236,6 +236,12 @@ class Bill(models.Model) :
     delivered_time = models.DateTimeField(null=True,blank=True)
     irn = models.TextField(null=True,blank=True)
     delivered = models.BooleanField(null=True,blank=True)
+    delivery_reason = models.TextField(choices=(("scanned","Scanned"),
+                                                ("bill_with_shop","Bill With Shop"),
+                                                ("cash_bill_success","Cash Bill (Collected Money)"),
+                                                ("bill_return","Bill Return"),
+                                                ("qrcode_not_found","QR Code Not Found"),
+                                                ("others","Other Reason")),null=True,blank=True)
     plain_loading_sheet = models.BooleanField(db_default=False,default=False)
     cash_bill = models.BooleanField(default=False,db_default=False)
     
