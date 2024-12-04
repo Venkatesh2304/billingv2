@@ -1805,7 +1805,7 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
             rows = rows.sort_values(by = ["max_days_per_party","Party Name"] , ascending=False)
             salesman,beat_id = beat_maps[beat]
             sheet_no = "PS" + date.strftime("%d%m%y") + str(beat_id)
-            models.PendingSheetBill.objects.filter(sheet_id = sheet_no).delete()
+            # models.PendingSheetBill.objects.filter(sheet_id = sheet_no).delete()
             models.PendingSheet(sheet_no=sheet_no,beat=beat,salesman=salesman,date=date).save()
             rows["sheet_id"] = sheet_no 
             renamed_rows = rows.rename(columns={"Bill No":"bill_id","OutstANDing Amount":"outstanding_amt","Bill Ageing (In Days)" : "days"})
