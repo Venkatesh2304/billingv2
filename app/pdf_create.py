@@ -180,8 +180,9 @@ def pending_sheet_pdf(df, sheet_no ,salesman,beat,date):
         df[col] = df[col].astype(str).str.split(".").str[0]
     data = []
     for _,row in df.iterrows() : 
-        data.append([ row["Party Name"].split("-")[0][:27] , row["Date"] , row["Salesperson Name"][:12] , str(row["Days"]).split(".")[0] , " " , " " ])
-        data.append([ row["Bill No"] , row["Bill"] , row["Coll"] , row["Outstanding"] , " " , " " ])
+        days = str(row["Days"]).split(".")[0]
+        data.append([ row["Party Name"].split("-")[0][:27] , row["Date"] , row["Salesperson Name"][:12] , days , " " , " " ])
+        data.append([ row["Bill No"] + " "*9 + days + " days" , row["Bill"] , row["Coll"] , row["Outstanding"] , " " , " " ])
 
 
     # Create the table and specify column widths

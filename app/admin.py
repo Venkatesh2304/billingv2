@@ -1789,8 +1789,20 @@ class SalesmanPendingSheetAdmin(CustomAdminModel) :
                     for key,no_of_days in [("Today",0),("Tommorow",1),("Day after Tommorow",2)] })]
 
     @admin.action(description='Download Pending Sheet')
-    def download_pending_sheet(self,request,queryset) : 
-        date = datetime.datetime.strptime(request.POST.get("date"),"%Y-%m-%d").date()
+    def download_pending_sheet(self,request,queryset) :
+        date = request.POST.get("date",None)
+        if date is None : #selected beats case (no date supplied)
+            # Find the date that is greater than today and whose day is equal to the given day.
+            day = queryset.exclude(days__contains=",").first().days
+            today = datetime.date.today()
+            day_to_index = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]
+            if day :
+                date = today + datetime.timedelta(days = (day_to_index.index(day) - today.weekday()) % 7)
+            else : 
+                date = today + datetime.timedelta(days = 1)
+        else : 
+            date = datetime.datetime.strptime(date,"%Y-%m-%d").date()
+        print( "Pending Sheet On Date : " , date )
         beat_ids = { str(id) for id in queryset.values_list("id",flat=True) }
         beat_maps = { beat.name : (beat.salesman_name,beat.id) for beat in queryset.all() }
         billing = Billing()

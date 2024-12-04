@@ -63,7 +63,7 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-gray-700 text-sm font-bold mb-2" for="reason">Payment Mode</label>
+                    <label class="block text-gray-700 text-sm font-bold mb-2" for="reason">Reason</label>
                     <select name="bill_status" id="bill_status" class="border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
                         <option value="scanned" {% if obj.bill_status == "scanned" %} selected{% endif %}>Scanned</option>
                         <option value="qrcode_not_found" {% if obj.bill_status == "qrcode_not_found" %}selected{% endif %}>QR code not found</option>
