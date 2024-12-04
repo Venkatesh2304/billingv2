@@ -276,6 +276,13 @@ def force_sales_sync(request) :
 
 class ScanPendingBills(View):
 
+    def change_status_to_checked_for_zero_outstanding(self,queryset) : 
+        for obj in queryset : 
+                if abs(models.Outstanding.objects.get(inum=obj.bill_id).balance) < 1 : 
+                    obj.outstanding_on_bill = 0 
+                    obj.outstanding_on_sheet = 0
+                    obj.save() 
+
     def get(self, request):
         bill_no = request.GET.get("bill",None)
         sheet_no = request.GET.get("sheet",None)
@@ -297,13 +304,9 @@ class ScanPendingBills(View):
             if sheet_no and not sheet_no.startswith('PS'):
                 sheet_no = 'PS' + sheet_no  # Add PS prefix if not present
 
+            
             queryset = list(models.PendingSheetBill.objects.filter(sheet_id=sheet_no).all())
-            for obj in queryset : 
-                if abs(models.Outstanding.objects.get(inum=obj.bill_id).balance) < 1 : 
-                    obj.outstanding_on_bill = 0 
-                    obj.outstanding_on_sheet = 0
-                    obj.save() 
-
+            self.change_status_to_checked_for_zero_outstanding(queryset)
             bills_info = [(obj.bill, obj.bill.party.name , obj.sheet_id , obj.status()) for obj in queryset]
             return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info,"extra_script" :""})
 
@@ -311,6 +314,7 @@ class ScanPendingBills(View):
             date = datetime.datetime.strptime(date,"%Y-%m-%d")
             sheets = models.PendingSheet.objects.filter(date = date).all()
             queryset = list(models.PendingSheetBill.objects.filter(sheet__in=sheets).all())
+            self.change_status_to_checked_for_zero_outstanding(queryset)
             bills_info = [(obj.bill, obj.bill.party.name , obj.sheet_id ,  obj.status()) for obj in queryset]
             bills_info = sorted(bills_info,key=lambda x : x[3])
             success = sum([ i[3] for i in bills_info ])
