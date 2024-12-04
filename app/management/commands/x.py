@@ -55,6 +55,7 @@ df = pd.read_sql(f"select * from app_pendingsheet",connection)
 
 print(df[df.sheet_no.str.contains("PS03")][["sheet_no","date"]]  )
 print(df[df.sheet_no.str.contains("PS04")][["sheet_no","date"]]  )
+print(df[df.date == datetime.date(2024,12,4)][["sheet_no","date"]]  )
 print(df[df.sheet_no.str.contains("PS05")][["sheet_no","date"]]  )
 print( pd.read_sql(f"select * from app_bill where bill_id='A60651'",connection).iloc[0]  )
 print( pd.read_sql(f"select * from app_collection where bill_id='A58562'",connection)  )
