@@ -49,7 +49,7 @@ c = 0
 for sheet in df["sheet_no"].unique() :
     print(c + 1 , sheet )
     input("wait :")
-    PendingSheet.objects.filter(sheet_no = sheet).update(date = datetime.date.today())
+    PendingSheet.objects.filter(sheet_no = sheet).update(date = datetime.date(2024,12,2))
     c += 1 
 print(c)
 
