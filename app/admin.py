@@ -80,6 +80,7 @@ import app.aztec as aztec
 
 os.makedirs("bills/",exist_ok=True)
 os.makedirs("voice_notes/",exist_ok=True)
+hello = 1
 
 def user_permission(s,*a,**kw) : 
     if a and False : return False #or "add" in a[0] "change" in a[0] or ("add" in a[0] ) 
