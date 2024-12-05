@@ -12,6 +12,10 @@ class BillingForm(forms.Form):
 class Command(BaseCommand):
     help = "Command to run automatic billing"
     def run_billing(self) : 
+        last_billing = models.Billing.objects.order_by("-start_time").first()
+        if (last_billing.status == BillingStatus.Started) and (last_billing.start_time < datetime.datetime.now() + datetime.timedelta(minutes = 10)) :
+            return False
+
         billing_lock.acquire()
         billing_form = BillingForm({"date":datetime.date.today(),"max_lines":100})
         billing_form.is_valid()
