@@ -80,7 +80,6 @@ import app.aztec as aztec
 
 os.makedirs("bills/",exist_ok=True)
 os.makedirs("voice_notes/",exist_ok=True)
-hello = 1
 
 def user_permission(s,*a,**kw) : 
     if a and False : return False #or "add" in a[0] "change" in a[0] or ("add" in a[0] ) 
@@ -637,8 +636,6 @@ class BillingAdmin(BaseOrderAdmin) :
         return tables 
 
     def start(self,billing_form:forms.Form) :
-
-
         if not billing_lock.acquire(blocking=False) : 
             return False
         ## Neccesary to create the billing_log before sending response , as the creditlock table depends on the latest billing
@@ -682,6 +679,12 @@ class BillingAdmin(BaseOrderAdmin) :
             if form.is_valid() : 
                 curr_action = form.cleaned_data["action"]
                 if (curr_action == Actions.Start) or (curr_action == Actions.Quit) : self.save_changelist(request)
+
+                if curr_action == Actions.Quit :
+                    # current_time = time.time()
+                    # os.utime("billingv2/settings.py", (current_time, current_time))
+                    if billing_lock.locked() :
+                        billing_lock.release()
 
                 if curr_action == Actions.Start : 
                     self.start(billing_form = form)
@@ -1995,7 +1998,6 @@ class TodayIn(TodayOut) :
     def pending_bills(self,obj) :
         return self.total_out(obj) - self.total_in(obj)
     
-
 
 
 admin_site = MyAdminSite(name='myadmin')
