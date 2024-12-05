@@ -43,8 +43,10 @@ cur = connection.cursor()
 # fdg
 df = pd.read_sql(f"select * from app_orders where order_no = '20SMN00017D-P119620241204'",connection)
 df1 = pd.read_sql(f"select * from app_billing where id = 2350",connection)
+df1 = pd.read_sql(f"select * from app_billing where id >= 2340",connection)
 print( df.iloc[0] )
 print( df1.iloc[0] )
+print( df1 )
 # beats = pd.read_sql(f"select * from app_beat",connection)
 # wednesday_beats = beats[beats.days.str.contains("monda",case=False)].name.to_list()
 # df = df[df.beat.isin(wednesday_beats)]
