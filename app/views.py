@@ -307,7 +307,7 @@ class ScanPendingBills(View):
             
             queryset = models.PendingSheetBill.objects.filter(sheet_id=sheet_no).all()
             self.change_status_to_checked_for_zero_outstanding(queryset)
-            bills_info = [(obj.bill, obj.bill.party.name , obj.sheet_id , obj.status()) for obj in queryset]
+            bills_info = [(obj.bill, obj.bill.party.name , obj.sheet_id , (obj.bill_status is None) or (obj.bill_status == "scanned") , obj.status()) for obj in queryset]
             return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info,"extra_script" :""})
 
         elif date : 
@@ -315,8 +315,8 @@ class ScanPendingBills(View):
             sheets = models.PendingSheet.objects.filter(date = date).all()
             queryset = models.PendingSheetBill.objects.filter(sheet__in=sheets).all()
             zero_outstanding_bills = self.change_status_to_checked_for_zero_outstanding(queryset)
-            bills_info = [(obj.bill, obj.bill.party.name , obj.sheet_id ,  obj.status() ) for obj in queryset]
-            bills_info = sorted(bills_info,key=lambda x : x[3])
+            bills_info = [(obj.bill, obj.bill.party.name , obj.sheet_id , (obj.bill_status is None) or (obj.bill_status == "scanned") ,  obj.status() ) for obj in queryset]
+            bills_info = sorted(bills_info,key=lambda x : x[4])
             
             checked = sum([ i[3] for i in bills_info ])
             not_checked= len(bills_info) - checked 
