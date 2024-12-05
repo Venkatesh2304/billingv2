@@ -78,6 +78,10 @@ class PrintType(Enum):
 
 import app.aztec as aztec 
 
+def reload_server() : 
+    current_time = time.time()
+    os.utime("billingv2/settings.py", (current_time, current_time))
+
 os.makedirs("bills/",exist_ok=True)
 os.makedirs("voice_notes/",exist_ok=True)
 
@@ -452,6 +456,10 @@ class BaseOrderAdmin(CustomAdminModel) :
         return round(obj.bill_value() - obj.allocated_value(),2)
     
     @bold 
+    def allocated_value(self,obj) : 
+        return round(obj.allocated_value(),2)
+    
+    @bold 
     def value(self,obj) : 
         return obj.bill_value()
     
@@ -681,9 +689,8 @@ class BillingAdmin(BaseOrderAdmin) :
                 if (curr_action == Actions.Start) or (curr_action == Actions.Quit) : self.save_changelist(request)
 
                 if curr_action == Actions.Quit :
-                    # current_time = time.time()
-                    # os.utime("billingv2/settings.py", (current_time, current_time))
                     if billing_lock.locked() :
+                        reload_server() 
                         billing_lock.release()
 
                 if curr_action == Actions.Start : 
@@ -705,7 +712,7 @@ class BillingAdmin(BaseOrderAdmin) :
 class OrdersAdmin(BaseOrderAdmin) :
     
     list_display_links = ["order_no"]
-    list_display =  ["partial","order_no","party","lines","pending_value","OS","coll","salesman","beat","creditlock","delete","phone"] 
+    list_display =  ["partial","order_no","party","lines","allocated_value","OS","coll","salesman","beat","creditlock","delete","phone"] 
     ordering = ["place_order"]
     actions = ["force_order","delete_orders"]
     custom_views = [ ("pending_orders","pending_changelist_view"),
@@ -1927,7 +1934,7 @@ class MyAdminSite(admin.AdminSite):
             "Config": {
                 "Vehicle": reverse("admin:app_vehicle_changelist"),
             },
-            "Update": reverse("update") ,
+            "Restart": reverse("reload_server") ,
             "Sync": {
                 "Sales":"/force-sales-sync" ,
                 "Collection":"/force-collection-sync" ,

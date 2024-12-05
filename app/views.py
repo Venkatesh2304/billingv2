@@ -8,7 +8,7 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 import pandas as pd
 
-from app.admin import sync_reports
+from app.admin import reload_server, sync_reports
 from app.common import query_db
 from custom.classes import Billing
 from .models import Outstanding
@@ -266,13 +266,14 @@ def add_salesman_cheque(request) :
     return redirect(f"salesman_cheque/?salesman={salesman}")
 
 
-def update(request) : 
-    os.system("git stash && git pull --ff && pip install -r requirements.txt && python manage.py migrate")
-    return JsonResponse("Done")
-
 def force_sales_sync(request) :
     sync_reports(limits={"sales":None} , 
                                 min_days_to_sync={"collection":15})
+
+def reload_server_view(request) : 
+    reload_server()
+    return JsonResponse(mark_safe("Server Restarted Successfully. Go to previous"),safe=False)
+
 
 
 class ScanPendingBills(View):

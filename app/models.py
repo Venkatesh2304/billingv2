@@ -22,6 +22,7 @@ class Billing(models.Model) :
     end_bill_no = models.TextField(max_length=10,null=True,blank=True)
     bill_count = models.IntegerField(null=True,blank=True,default=0)
     date = models.DateField()
+    automatic = models.BooleanField(default=False,db_default=False)
 
     def __str__(self) -> str:
         return str(self.start_time.strftime("%d/%m/%y %H:%M:%S"))
