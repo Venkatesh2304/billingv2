@@ -27,7 +27,6 @@ class Command(BaseCommand):
         for i in range(3) : 
             if self.run_billing() : 
                 break 
-        input("wait :")
         self.run_billing()
         
 
