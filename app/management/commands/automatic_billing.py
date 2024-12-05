@@ -2,7 +2,7 @@ import time
 from django import forms
 import app.models as models
 import datetime
-from app.admin import billing_process_names,run_billing_process,BillingStatus
+from app.admin import billing_process_names,run_billing_process,BillingStatus,billing_lock
 from django.core.management.base import BaseCommand
 
 class BillingForm(forms.Form):
@@ -12,6 +12,7 @@ class BillingForm(forms.Form):
 class Command(BaseCommand):
     help = "Command to run automatic billing"
     def run_billing(self) : 
+        billing_lock.acquire()
         billing_form = BillingForm({"date":datetime.date.today(),"max_lines":100})
         billing_form.is_valid()
         billing_log = models.Billing(start_time = datetime.datetime.now(), status = 2,date = billing_form.cleaned_data.get("date"), automatic = True )
