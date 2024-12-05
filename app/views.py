@@ -318,7 +318,7 @@ class ScanPendingBills(View):
             bills_info = [(obj.bill, obj.bill.party.name , obj.sheet_id , (obj.bill_status is None) or (obj.bill_status == "scanned") ,  obj.status() ) for obj in queryset]
             bills_info = sorted(bills_info,key=lambda x : x[4])
             
-            checked = sum([ i[3] for i in bills_info ])
+            checked = sum([ i[4] for i in bills_info ])
             not_checked= len(bills_info) - checked 
             zero_outstanding = len(zero_outstanding_bills)
             cheque_neft = queryset.filter(payment_mode__in = "cheque/neft").count()
