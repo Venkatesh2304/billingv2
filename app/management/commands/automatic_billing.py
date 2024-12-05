@@ -1,7 +1,8 @@
+import time
 from django import forms
 import app.models as models
 import datetime
-from app.admin import billing_process_names,run_billing_process
+from app.admin import billing_process_names,run_billing_process,BillingStatus
 from django.core.management.base import BaseCommand
 
 class BillingForm(forms.Form):
@@ -17,11 +18,14 @@ class Command(BaseCommand):
         for process_name in billing_process_names :
             models.BillingProcessStatus(billing = billing_log,process = process_name,status = 0).save()
         run_billing_process(billing_log,billing_form)
-
+        return (billing_log.status == BillingStatus.Success)
+    
     def handle(self, *args: models.Any, **options: models.Any) -> str | None:
         print(f"Automatic Billing Started @ {datetime.datetime.now()}")
-        self.run_billing()
-        input("Wait :: ")
+        for i in range(3) : 
+            if self.run_billing() : 
+                break 
+        input("wait :")
         self.run_billing()
         
 

@@ -87,6 +87,7 @@ class BaseIkea(Session) :
          except StatusCodeError : 
            self.logger.error("Login Check : Failed")
            return False 
+         
     
       def login(self) : 
           self.logger.info("Login Initiated")
