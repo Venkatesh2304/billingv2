@@ -41,7 +41,8 @@ cur = connection.cursor()
 
 # cur.execute("DELETE from app_chequedeposit")
 # fdg
-df = pd.read_sql(f"select * from app_pendingsheet",connection)
+df = pd.read_sql(f"select * from app_orders where order_no = '20SMN00017D-P119620241204'",connection)
+print( df )
 # beats = pd.read_sql(f"select * from app_beat",connection)
 # wednesday_beats = beats[beats.days.str.contains("monda",case=False)].name.to_list()
 # df = df[df.beat.isin(wednesday_beats)]

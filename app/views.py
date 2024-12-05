@@ -333,7 +333,7 @@ class ScanPendingBills(View):
 
             alert_text = "\\n".join( f"{k}: {v}" for k,v in alert_text )
             extra_script = mark_safe(f"window.alert('{alert_text}')")
-            return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "extra_script" : extra_script , "x" : resaon_counts })
+            return render(request, 'scan_pending_bill/select_pending_bill.html', {'bills': bills_info , "extra_script" : extra_script})
         else :
             yesterday = datetime.date.today() - datetime.timedelta(days=0)
             recent_dates = [yesterday - datetime.timedelta(days=i) for i in range(4)]
