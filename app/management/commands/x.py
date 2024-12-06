@@ -43,7 +43,7 @@ cur = connection.cursor()
 # cur.execute("DELETE from app_pendingsheet where sheet_no like 'PS04%' and date = '2024-12-04'")
 # fdg
 df = pd.read_sql(f"select * from app_pendingsheet where sheet_no like 'PS04%'",connection)
-df = pd.read_sql(f"select * from app_pendingsheet where sheet_no = 'PS031224544'",connection)
+# df = pd.read_sql(f"select * from app_pendingsheet where sheet_no = 'PS031224544'",connection)
 print( df )
 df = pd.read_sql(f"select * from app_pendingsheet where date = '2024-12-04'",connection)
 print( df )
