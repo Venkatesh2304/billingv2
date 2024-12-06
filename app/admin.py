@@ -1461,6 +1461,31 @@ class BankStatementAdmin(CustomAdminModel) :
     
 
     def auto_find_upi(self,request,qs) :
+        fromd = qs.aggregate(Min("date"))["date__min"]
+        tod = qs.aggregate(Max("date"))["date__max"]
+        upi_statement:pd.DataFrame = IkeaDownloader().upi_statement(fromd - datetime.timedelta(days = 3),tod)
+        upi_statement["FOUND"] = "No"
+        upi_statement["PAYMENT ID"] = upi_statement["PAYMENT ID"].astype(str).str.split(".").str[0]
+        for bank_obj in qs.all() : 
+            for _,row in upi_statement.iterrows() : 
+                if (row["FOUND"] == "No") and (row["PAYMENT ID"] in bank_obj.desc) : 
+                    bank_obj.type = "upi"
+                    bank_obj.save()
+                    upi_statement.loc[_,"FOUND"] = "Yes"
+                    
+        
+        upi_during_period = upi_statement[(upi_statement["COLLECTED DATE"].dt.date >= fromd)] 
+        upi_before_period = upi_statement[(upi_statement["COLLECTED DATE"].dt.date < fromd)] 
+
+        with pd.ExcelWriter("UPI Matching.xlsx") as writer :
+            upi_during_period[upi_during_period["FOUND"] == "No"].to_excel(writer,sheet_name="Un-Matched UPI (Current)",index=False)
+            upi_during_period[upi_during_period["FOUND"] == "Yes"].to_excel(writer,sheet_name="Matched UPI (Current)",index=False)
+            upi_before_period[upi_before_period["FOUND"] == "Yes"].to_excel(writer,sheet_name=f"Matched UPI (Before)",index=False)
+        
+        link = hyperlink(f"/static/UPI Matching.xlsx",f"Download UPI Matching",style="text-decoration:underline;color:blue;") 
+        messages.success(request,mark_safe(link))
+
+    def auto_find_upi2(self,request,qs) :
         sync_reports(limits={"collection":5*60})
         unassigned_bank_qs = qs.filter(Q(type__isnull=True)|Q(type="upi")).values_list("amt","id","date")
         date_amt_ids = defaultdict(lambda : defaultdict(list) )

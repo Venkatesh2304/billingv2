@@ -87,7 +87,6 @@ class BaseIkea(Session) :
          except StatusCodeError : 
            self.logger.error("Login Check : Failed")
            return False 
-         
     
       def login(self) : 
           self.logger.info("Login Initiated")
@@ -310,6 +309,10 @@ class IkeaDownloader(BaseIkea) :
           del form["beat"]
           del form["sub"]
           s.post("https://shogunlite.com/deliveryupload_home.do",data = form).text
+
+      def upi_statement(self,fromd,tod) :  
+          return self.report("ikea/upi_statement",r'(":val3":"\').{10}(\'",":val4":"\').{10}' ,
+                                                       (fromd.strftime("%Y-%m-%d"),tod.strftime("%Y-%m-%d")) )
 
 
 class Billing(IkeaDownloader) :
