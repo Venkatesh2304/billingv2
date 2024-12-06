@@ -323,7 +323,7 @@ class ScanPendingBills(View):
                 print( obj )
                 print( obj.bill )
                 print( obj.bill.party.name )
-                print( obj.bill.bill_status )
+                print( obj.bill_status )
                 print( obj.status() )
             bills_info = [(obj.bill, obj.bill.party.name , obj.sheet_id , (obj.bill_status is None) or (obj.bill_status == "scanned") ,  obj.status() ) for obj in queryset]
             bills_info = sorted(bills_info,key=lambda x : x[4])
