@@ -319,7 +319,13 @@ class ScanPendingBills(View):
             sheets = models.PendingSheet.objects.filter(date = date).all()
             queryset = models.PendingSheetBill.objects.filter(sheet__in=sheets).all()
             zero_outstanding_bills = self.change_status_to_checked_for_zero_outstanding(queryset)
-            bills_info = [(obj.bill, "a", obj.sheet_id , (obj.bill_status is None) or (obj.bill_status == "scanned") ,  obj.status() ) for obj in queryset]
+            for obj in queryset :
+                print( obj )
+                print( obj.bill )
+                print( obj.bill.party.name )
+                print( obj.bill.bill_status )
+                print( obj.status() )
+            bills_info = [(obj.bill, obj.bill.party.name , obj.sheet_id , (obj.bill_status is None) or (obj.bill_status == "scanned") ,  obj.status() ) for obj in queryset]
             bills_info = sorted(bills_info,key=lambda x : x[4])
             
             checked = sum([ i[4] for i in bills_info ])
