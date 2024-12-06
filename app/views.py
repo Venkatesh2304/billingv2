@@ -1,4 +1,5 @@
 # views.py
+from collections import Counter, defaultdict
 import datetime
 from io import BytesIO
 import json
@@ -355,10 +356,32 @@ class ScanPendingBills(View):
         obj.save()
         return redirect(f"/scan_pending_bills?sheet={pending_sheet_no}")
         
-def sync_impact(request):
+def sync_impact(request,force_all_bills = False):
     bill_counts = {}
     yesterday = datetime.date.today() - datetime.timedelta(days=1)
     yesterday_bills = models.Bill.objects.filter(bill__date = yesterday)
+    beat_vehicle_counts = defaultdict(lambda : defaultdict(list))
+    vehicle_bills_final = defaultdict(set)
+
+    for bill in yesterday_bills.all() : 
+        beat_vehicle_counts[bill.bill.beat][bill.vehicle].append(bill.bill_id)
+
+    for beat,vehicle_bills in beat_vehicle_counts.items() :
+        vehicle_bill_counts = [ (len(bills),vehicle) for vehicle,bills in vehicle_bills.items() if vehicle is not None ]
+        if len(vehicle_bill_counts) == 0 : continue 
+        default_vehicle = max(vehicle_bill_counts)[1]
+        
+        for vehicle,bills in vehicle_bills : 
+            vehicle = vehicle or default_vehicle
+            vehicle_bills_final[vehicle].union( set(bills) )
+            
+    for vehicle , bills in vehicle_bills_final.items() :
+        if  vehicle.name_on_impact is None : 
+                raise Exception("Vehicle name on impact is not set") 
+        # Billing().sync_impact(yesterday,yesterday,bills,vehicle.name_on_impact)
+    
+    return JsonResponse(vehicle_bills_final,safe=False)
+
     x = []
     for vehicle in models.Vehicle.objects.all(): 
         qs = models.Bill.objects.filter(loading_time__date = datetime.date.today(),vehicle = vehicle)
