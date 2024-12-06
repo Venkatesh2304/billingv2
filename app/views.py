@@ -123,7 +123,8 @@ def scan_bills(request) :
     return render(request, 'vehicle_selection.html', {'form': form})
     
 
-def get_bill_out(request,loading_date = datetime.date.today()): 
+def get_bill_out(request,loading_date = None):
+    loading_date = loading_date or datetime.date.today() 
     vehicle = request.GET.get('vehicle')
     qs = models.Bill.objects.filter(loading_time__date = loading_date , vehicle = vehicle)
     bills = list(qs.filter(loading_sheet__isnull=True).values_list("loading_time","bill_id","bill__party__name"))
@@ -133,7 +134,8 @@ def get_bill_out(request,loading_date = datetime.date.today()):
     return JsonResponse({"bills" : sorted_all_bills ,  
                           "total_count":len(sorted_all_bills) ,"bill_count":len(bills),"loading_sheet_count":len(ls)})
 
-def get_bill_in(request,delivery_date = datetime.date.today()): 
+def get_bill_in(request,delivery_date = None):
+    delivery_date = delivery_date or datetime.date.today() 
     vehicle = request.GET.get('vehicle')
     last_loading_date = models.Bill.objects.filter(loading_time__date__lt = delivery_date , vehicle = vehicle).order_by("-loading_time").first().loading_time
     bill_out_data = json.loads( get_bill_out(request,last_loading_date).content.decode('utf-8') )
