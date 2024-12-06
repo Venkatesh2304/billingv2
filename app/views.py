@@ -359,6 +359,7 @@ def sync_impact(request):
     bill_counts = {}
     yesterday = datetime.date.today() - datetime.timedelta(days=1)
     yesterday_bills = models.Bill.objects.filter(bill__date = yesterday)
+    x = []
     for vehicle in models.Vehicle.objects.all(): 
         qs = models.Bill.objects.filter(loading_time__date = datetime.date.today(),vehicle = vehicle)
         bills = qs.values_list("bill_id",flat=True)
@@ -366,7 +367,7 @@ def sync_impact(request):
         for beat in beats : 
             beat_all_bills_count = yesterday_bills.filter(bill__beat = beat).count()
             beat_loaded_bills_count = qs.filter(bill__beat = beat, bill__date = yesterday).count()
-            print( beat, beat_all_bills_count , beat_loaded_bills_count )
+            x.append([ beat, beat_all_bills_count , beat_loaded_bills_count ])
             
         from_date = qs.aggregate(min_date = models.Min('bill__date'))['min_date']
         to_date = datetime.date.today() 
@@ -375,7 +376,7 @@ def sync_impact(request):
             if vehicle.name_on_impact is None : 
                 raise Exception("Vehicle name on impact is not set") 
             Billing().sync_impact(from_date,to_date,bills,vehicle.name_on_impact)
-    return JsonResponse(bill_counts)
+    return JsonResponse(x)
 
 
 ##depricated
