@@ -1659,7 +1659,12 @@ class BankCollectionAdmin(CustomAdminModel) :
 
         sync_reports({"collection" : None})
         bytes_io.seek(0)
-        response = HttpResponse(bytes_io, content_type='application/vnd.ms-excel')
+        summary = BytesIO()
+        with pd.ExcelWriter(summary, engine='xlsxwriter') as writer:
+            cheque_upload_status.to_excel(writer,sheet_name="Manual Collection")
+            cheque_settlement.to_excel(writer,sheet_name="Cheque Settlement")
+        summary.seek(0)
+        response = HttpResponse(summary, content_type='application/vnd.ms-excel')
         response['Content-Disposition'] = 'attachment; filename="' + f"Uploaded Collection.xlsx" + '"'
         return response 
                                 

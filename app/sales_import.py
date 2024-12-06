@@ -134,7 +134,7 @@ def CollectionInsert(coll) :
    is_auto_pushed_chq = (coll.Status == "CHQ") & (coll["Collection Settlement Mode"] == "Excel Collection")
    coll.loc[ is_auto_pushed_chq , "bank_entry_id" ] = coll.loc[ is_auto_pushed_chq , "Cheque No" ].astype(str).str.split(".").str[0]
 
-   coll["mode"] = coll.Status.replace({"CSH":"Cash"} | { k : "Bank" for k in ["CHQ","NEFT","RTGS","UPI","IMPS"] })
+   coll["mode"] = coll.Status.replace({"CSH":"Cash"}) # { k : "Bank" for k in ["CHQ","NEFT","RTGS","UPI","IMPS"] } 
    coll["party_id"] = None
    ledger_insert("collection",coll[ models.Collection.columns ])
    query = """UPDATE app_collection SET party_id = (
