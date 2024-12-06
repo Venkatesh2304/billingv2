@@ -373,6 +373,7 @@ def sync_impact(request,force_all_bills = False):
         for vehicle,bills in vehicle_bills.items() : 
             vehicle = vehicle or default_vehicle
             vehicle_bills_final[vehicle].union( set(bills) )
+            sdf
     asd
             
     for vehicle , bills in vehicle_bills_final.items() :
