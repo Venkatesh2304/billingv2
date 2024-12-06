@@ -357,11 +357,19 @@ class ScanPendingBills(View):
         
 def sync_impact(request):
     bill_counts = {}
+    yesterday = datetime.date.today() - datetime.timedelta(days=1)
+    yesterday_bills = models.Bill.objects.filter(bill__date = yesterday)
     for vehicle in models.Vehicle.objects.all(): 
         qs = models.Bill.objects.filter(loading_time__date = datetime.date.today(),vehicle = vehicle)
+        bills = qs.values_list("bill_id",flat=True)
+        beats = qs.values_list("bill__beat",flat=True)
+        for beat in beats : 
+            beat_all_bills_count = yesterday_bills.filter(bill__beat = beat).count()
+            beat_loaded_bills_count = qs.filter(bill__beat = beat, bill__date = yesterday).count()
+            print( beat, beat_all_bills_count , beat_loaded_bills_count )
+            
         from_date = qs.aggregate(min_date = models.Min('bill__date'))['min_date']
         to_date = datetime.date.today() 
-        bills = qs.values_list("bill_id",flat=True)
         if bills :
             bill_counts[vehicle.name] = len(bills)
             if vehicle.name_on_impact is None : 
