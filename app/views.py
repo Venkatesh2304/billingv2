@@ -385,8 +385,9 @@ def sync_impact(request,force_all_bills = False):
         bills.extend(loaded_bills)
         if  vehicle.name_on_impact is None : 
                 raise Exception("Vehicle name on impact is not set") 
-        # Billing().sync_impact(from_date,to_date,list(set(bills)),vehicle.name_on_impact)
-    vehicle_bills_final = { a.name : len(set(b)) for a,b in vehicle_bills_final.items() }
+        Billing().sync_impact(from_date,to_date,list(set(bills)),vehicle.name_on_impact)
+        
+    vehicle_bills_final = { vehicle.name : len(set(bills)) for vehicle,bills in vehicle_bills_final.items() }
     return JsonResponse(vehicle_bills_final,safe=False)
 
 
