@@ -133,7 +133,7 @@ def get_bill_out(request,loading_date = None):
     sorted_all_bills = sorted(bills + ls, key=lambda x: x[0], reverse=True)
     sorted_all_bills = [ (bill,party) for time,bill,party in sorted_all_bills ] 
     return JsonResponse({"bills" : sorted_all_bills ,  
-                          "total_count":len(sorted_all_bills) ,"bill_count":len(bills),"loading_sheet_count":len(ls)})
+                          "total_count":len(set(sorted_all_bills)) ,"bill_count":len(bills),"loading_sheet_count":len(ls)})
 
 def get_bill_in(request,delivery_date = None):
     delivery_date = delivery_date or datetime.date.today() 
@@ -150,8 +150,7 @@ def get_bill_in(request,delivery_date = None):
     sorted_all_bills = [ (bill,party) for time,bill,party in sorted_all_bills ] 
     delivered_bills = sorted_all_bills
     
-    missing_bills = loaded_bills # list(set(loaded_bills) - set(delivered_bills))
-    missing_bills.sort()
+    missing_bills = list(set(loaded_bills) - set(delivered_bills))
     return JsonResponse({ "bills" : missing_bills, "loading_date": last_loading_date.strftime("%d %b %Y"),
                           "missing_count":len(missing_bills) , "loading_count":len(set(loaded_bills)), 
                           "delivery_previous_day_count":len(set(delivered_bills) & set(loaded_bills)) , "delivery_other_day_count" : len(set(delivered_bills)- set(loaded_bills)) })
