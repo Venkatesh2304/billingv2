@@ -1433,15 +1433,16 @@ class ChequeDepositAdmin(CustomAdminModel) :
 class BankStatementAdmin(CustomAdminModel) : 
 
     change_list_template = "form_and_changelist.html"
-    list_display = ["date","ref","desc","amt","bank","saved","id"]
+    list_display = ["date","ref","desc","amt","bank","saved","type","id"]
     readonly_fields = ["amt","desc","date","ref","bank","idx","id"]
     hidden_fields = ["idx"]
-    list_filter = ["date"]
+    list_filter = ["date","type"]
     # search_fields = ["amt","desc"]
     list_display_links = ["date","amt"]
     ordering = ["-date"]
     permissions = [Permission.change,Permission.delete]
-    
+    actions = ["auto_find_upi"]
+
     @admin.display(boolean=True)
     def saved(self,obj) : 
         return obj.type is not None
@@ -1460,25 +1461,25 @@ class BankStatementAdmin(CustomAdminModel) :
     
 
     def auto_find_upi(self,request,qs) :
-        qs = qs.filter(Q(type__isnull=True)|Q(type="upi")).values_list("amt","id","date")
+        sync_reports(limits={"collection":5*60})
+        unassigned_bank_qs = qs.filter(Q(type__isnull=True)|Q(type="upi")).values_list("amt","id","date")
         date_amt_ids = defaultdict(lambda : defaultdict(list) )
         
-        for amt,id,bank_date in qs : 
-            date_amt_ids[bank_date][amt].append(id)
+        for amt,id,bank_date in unassigned_bank_qs : 
+            date_amt_ids[bank_date][int(amt)].append(id)
         
         dates = list(date_amt_ids.keys())
         matched_bank_ids = []
         for date in dates :
-            coll_upi_amts = models.Collection.objects.filter(date = date,mode="UPI").values_list("amt")
-            coll_upi_amts = Counter(coll_upi_amts)
-            for amt,times in coll_upi_amts : 
+            ikea_upi_amts_on_a_date = models.Collection.objects.filter(date = date,mode="UPI").values_list("amt",flat=True)
+            ikea_upi_amts_on_a_date = Counter(ikea_upi_amts_on_a_date)
+            for amt,times in ikea_upi_amts_on_a_date.items() : 
                 if len(date_amt_ids[date][amt]) == times : #Matched 
-                    matched_bank_ids
+                    matched_bank_ids.extend( date_amt_ids[date][amt] )
 
-
-        
-        bank_entries = models.BankStatement.objects.filter(type__isnull=True)
-        for bank_entry in bank_entries : pass
+        newly_identified = set(matched_bank_ids) - set( qs.filter(type__isnull=True).values_list("id",flat=True) )
+        models.BankStatement.objects.filter(id__in = matched_bank_ids).update(type="upi")
+        messages.success(request,f"Successful Identified New {len(matched_bank_ids)} {len(newly_identified)} UPI Transactions")
 
     def get_inlines(self, request, obj = None):
         if self.has_change_permission(request,obj) : 
