@@ -1486,13 +1486,20 @@ class BankStatementAdmin(CustomAdminModel) :
             return [self.NeftCollectionInline,self.IkeaCollectionInline]
 
     def has_change_permission(self, request, obj=None):
-        if obj and (obj.collection.filter(pushed = True).count()) : 
-            return False 
+        if obj and (obj.collection.filter(pushed = True).count()) :
+                return False 
         return super().has_change_permission(request, obj)
     
     def has_delete_permission(self, request, obj=None):
-        return self.has_change_permission(request, obj)
+        if obj and obj.ikea_collection.count() : 
+            return False 
+        return super().has_delete_permission(request, obj)
     
+    def delete_model(self, request: HttpRequest, obj: Any) -> None:
+        models.BankCollection.objects.filter(bank_entry = obj).update(pushed = False)
+        models.BankCollection.objects.filter(bank_entry = obj,cheque_entry__isnull = False).update(bank_entry = None)
+        return super().delete_model(request, obj)
+
     def save_model(self, request, obj, form, change):
         if change:
             old_obj = models.BankStatement.objects.get(pk=obj.pk)
@@ -1623,16 +1630,15 @@ class BankCollectionAdmin(CustomAdminModel) :
 
         manual_coll = pd.concat(manual_coll)
         manual_coll["Collection Date"] = datetime.date.today()
-        print("Manual collection :",manual_coll)
 
         f = BytesIO()
         manual_coll.to_excel(f,index=False)
         f.seek(0)
         res = billing.upload_manual_collection(f)
 
-        x = pd.read_excel(billing.download_file(res["ul"]))
-        x.to_excel("b.xlsx")
-        print("Upload collection :", x.iloc[0] )
+        cheque_upload_status = pd.read_excel(billing.download_file(res["ul"]))
+        cheque_upload_status.to_excel("cheque_upload_status.xlsx")
+        sucessfull_coll = cheque_upload_status[cheque_upload_status["Status"] == "Success"]
 
         settle_coll:pd.DataFrame = billing.download_settle_cheque() # type: ignore
         settle_coll = settle_coll[ settle_coll.apply(lambda row : (str(row["CHEQUE NO"]),row["BILL NO"]) in bill_chq_pairs ,axis=1) ]
@@ -1641,15 +1647,16 @@ class BankCollectionAdmin(CustomAdminModel) :
         settle_coll.to_excel(f,index=False)
         f.seek(0)
         res = billing.upload_settle_cheque(f)
-        print( res , res["ul"])
 
         bytes_io = billing.download_file(res["ul"])
-        x = pd.read_excel(bytes_io)
-        x.to_excel("a.xlsx")
-        print("Response collection :", x)
-        queryset.update(pushed = True)
-        sync_reports({"collection" : None})
+        cheque_settlement = pd.read_excel(bytes_io)
+        cheque_settlement.to_excel("cheque_settlement.xlsx")
+        for _,row in sucessfull_coll.iterrows() : 
+            chq_no = row["Chq/DD No"]
+            bill_no = row["BillNumber"]
+            models.BankCollection.objects.filter(bank_entry_id = chq_no,bill_id = bill_no).update(pushed = True)
 
+        sync_reports({"collection" : None})
         bytes_io.seek(0)
         response = HttpResponse(bytes_io, content_type='application/vnd.ms-excel')
         response['Content-Disposition'] = 'attachment; filename="' + f"Uploaded Collection.xlsx" + '"'
