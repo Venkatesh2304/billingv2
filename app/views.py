@@ -356,7 +356,7 @@ class ScanPendingBills(View):
         obj.save()
         return redirect(f"/scan_pending_bills?sheet={pending_sheet_no}")
         
-def sync_impact(request,force_all_bills = False):
+def sync_impact(request):
     bill_counts = {}
     yesterday = datetime.date.today() - datetime.timedelta(days=1)
     yesterday_bills = models.Bill.objects.filter(bill__date = yesterday)

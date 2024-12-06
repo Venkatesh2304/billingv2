@@ -41,7 +41,11 @@ cur = connection.cursor()
 
 # cur.execute("DELETE from app_chequedeposit")
 # fdg
-df = pd.read_sql(f"select * from app_orders where order_no = '20SMN00017D-P119620241204'",connection)
+df = pd.read_sql(f"select * from app_pendingstatement where sheet_no = 'PS031224544'",connection)
+print( df )
+df = pd.read_sql(f"select * from app_pendingstatement",connection)
+print( df )
+sdf
 df1 = pd.read_sql(f"select * from app_billing where id = 2350",connection)
 df1 = pd.read_sql(f"select * from app_billing where id >= 2340",connection)
 print( df.iloc[0] )
