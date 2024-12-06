@@ -46,6 +46,8 @@ cur = connection.cursor()
 # df = pd.read_sql(f"select * from app_pendingsheet where sheet_no = 'PS031224544'",connection)
 # print( df )
 df = pd.read_sql(f"select * from app_pendingsheetbill where id =  2593",connection)
+print( pd.read_sql(f"select * from app_bill where bill_id = 'A60277'",connection) )
+print( pd.read_sql(f"select * from app_sales where inum = 'A60277'",connection) )
 print( df.iloc[0] )
 print( df )
 sdf
