@@ -1381,9 +1381,10 @@ class ChequeDepositAdmin(CustomAdminModel) :
     def get_outstanding(self,request, inum):
         try:
             obj = models.Outstanding.objects.get(inum=inum.split("-")[0])
-            return JsonResponse({'balance': str(round(-obj.balance,2)) , 'party' : obj.party.name })
+            unpushed_coll = models.BankCollection.objects.filter(bill_id = inum,pushed = False).aggregate(Sum("amt"))["amt__sum"] or 0
+            return JsonResponse({'balance': str(round(-obj.balance,2)) , 'party' : obj.party.name , 'unpushed_coll' :  unpushed_coll})
         except models.Outstanding.DoesNotExist:
-            return JsonResponse({'balance': 0,'party': '-'})
+            return JsonResponse({'balance': 0,'party': '-',"unpushed_coll" : 0})
 
     custom_views = [("get-outstanding/<str:inum>","get_outstanding"),("billautocomplete",BillAutocomplete.as_view())]
 

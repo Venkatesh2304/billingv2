@@ -42,6 +42,9 @@ function fetchStaticAmt(id,i) {
     fetch(`${GET_OUTSTANDING_URL}/${id}/`)
         .then(response => response.json())
         .then(data => {
+            if ( data.unpushed_coll > 0 ) { 
+                alert("This bill"+ id +"has unpushed collection of Rs."+ data.unpushed_coll );
+            }
             document.querySelectorAll('.field-balance')[i].innerText = data.balance ;
             const amt_input = document.getElementById("collection-group").querySelectorAll('.field-amt')[i].querySelector("input")
             if (amt_input.value == "") { amt_input.value = parseInt(data.balance) ; }
