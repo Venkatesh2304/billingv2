@@ -368,7 +368,7 @@ def sync_impact(request,force_all_bills = False):
 
     for beat,vehicle_bills in beat_vehicle_counts.items() :
         vehicle_bill_counts = [ (len(bills),vehicle) for vehicle,bills in vehicle_bills.items() if vehicle is not None ]
-        if len(vehicle_bill_counts) == 0 : continue 
+        # if len(vehicle_bill_counts) == 0 : continue 
         default_vehicle = max(vehicle_bill_counts)[1]
         
         for vehicle,bills in vehicle_bills.items() : 
