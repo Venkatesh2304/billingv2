@@ -371,6 +371,7 @@ def sync_impact(request,force_all_bills = False):
         if len(vehicle_bill_counts) == 0 : continue 
         default_vehicle = max(vehicle_bill_counts)[1]
         for vehicle,bills in vehicle_bills.items() : 
+            if vehicle is None : continue 
             vehicle = vehicle or default_vehicle
             vehicle_bills_final[vehicle].extend( bills )
             
