@@ -492,7 +492,7 @@ class BaseOrderAdmin(CustomAdminModel) :
         qs = models.SalesmanCollection.objects.filter(time__gte = datetime.date.today()).filter(bills__inum__party = obj.party)
         colls = qs.all()
         if len(colls) : 
-            ids = ",".join([ coll.id for coll in colls ])
+            ids = ",".join([ str(coll.id) for coll in colls ])
             day_values = defaultdict(lambda : 0) 
             today = datetime.date.today()
             for coll in colls : day_values[(coll.date - today).days] += coll.amt  
