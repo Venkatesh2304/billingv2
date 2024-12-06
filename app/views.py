@@ -153,7 +153,7 @@ def get_bill_in(request,delivery_date = None):
     missing_bills = list(set(loaded_bills) - set(delivered_bills))
 
     return JsonResponse({ "bills" : missing_bills, "loading_date": last_loading_date.strftime("%d %b %Y"),
-                          "missing_count":len(missing_bills) , "loading_count":len(loaded_bills), 
+                          "missing_count":len(missing_bills) , "loading_count":len(set(loaded_bills)), 
                           "delivery_previous_day_count":len(set(delivered_bills) & set(loaded_bills)) , "delivery_other_day_count" : len(set(delivered_bills)- set(loaded_bills)) })
 
 
