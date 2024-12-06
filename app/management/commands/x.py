@@ -43,7 +43,7 @@ cur = connection.cursor()
 # fdg
 df = pd.read_sql(f"select * from app_pendingsheet where sheet_no = 'PS031224544'",connection)
 print( df )
-df = pd.read_sql(f"select * from app_pendingsheet",connection)
+df = pd.read_sql(f"select * from app_pendingsheet where date = '2024-12-04'",connection)
 print( df )
 sdf
 df1 = pd.read_sql(f"select * from app_billing where id = 2350",connection)
