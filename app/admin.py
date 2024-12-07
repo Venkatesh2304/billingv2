@@ -1376,7 +1376,8 @@ class ChequeDepositAdmin(CustomAdminModel) :
             if self.q:
                 qs = qs.filter(Q(inum__icontains=self.q) | Q(party__name__icontains=self.q)) 
             return qs
-            
+    
+    #To fix unpushed collection for the current bank collection (cheque + neft)
     ##Custom view to support fetch outstanding in inlines 
     def get_outstanding(self,request, inum):
         try:
@@ -1430,7 +1431,16 @@ class ChequeDepositAdmin(CustomAdminModel) :
               super().save_model(request,bank_obj,form,change)    
         super().save_related(request,form,formsets, change)
 
-class BankStatementAdmin(CustomAdminModel) : 
+class NoSelectActions(admin.ModelAdmin) : 
+      empty_actions = []
+      def changelist_view(self, request: HttpRequest, extra_context: Dict[str, str] | None = ...) -> TemplateResponse:
+          if request.POST.get("action") in self.empty_actions :
+             post = request.POST.copy()
+             post.update({ "_selected_action" : [] })
+             request._set_post(post)
+          return super().changelist_view(request, extra_context)
+      
+class BankStatementAdmin(CustomAdminModel,NoSelectActions) : 
 
     change_list_template = "form_and_changelist.html"
     list_display = ["date","ref","desc","amt","bank","saved","type","id"]
@@ -1441,7 +1451,17 @@ class BankStatementAdmin(CustomAdminModel) :
     list_display_links = ["date","amt"]
     ordering = ["-date"]
     permissions = [Permission.change,Permission.delete]
-    actions = ["auto_find_upi"]
+    actions = ["auto_find_upi","refresh_collection"]
+    empty_actions = ["auto_find_upi","refresh_collection"]
+
+    @admin.display(description="Refresh IKEA Collection")
+    def refresh_collection(self,request,qs) : 
+        sync_reports({"collection":None},limits={"collection":7})
+
+    def get_actions(self,request) : 
+        actions = super().get_actions(request)
+        if "delete_selected" in actions : actions.pop("delete_selected")
+        return actions
 
     @admin.display(boolean=True)
     def saved(self,obj) : 
@@ -1459,8 +1479,9 @@ class BankStatementAdmin(CustomAdminModel) :
         model = models.Collection
         verbose_name_plural = "IKEA Pushed Collection"
     
-
+    @admin.display(description="Auto Match UPI")
     def auto_find_upi(self,request,qs) :
+        qs = models.BankStatement.objects.filter(Q(type__isnull=True)|Q(type="upi")).filter(date__gte = datetime.date.today() - datetime.timedelta(days=7)) 
         fromd = qs.aggregate(Min("date"))["date__min"]
         tod = qs.aggregate(Max("date"))["date__max"]
         upi_statement:pd.DataFrame = IkeaDownloader().upi_statement(fromd - datetime.timedelta(days = 3),tod)
@@ -1473,7 +1494,6 @@ class BankStatementAdmin(CustomAdminModel) :
                     bank_obj.save()
                     upi_statement.loc[_,"FOUND"] = "Yes"
                     
-        
         upi_during_period = upi_statement[(upi_statement["COLLECTED DATE"].dt.date >= fromd)] 
         upi_before_period = upi_statement[(upi_statement["COLLECTED DATE"].dt.date < fromd)] 
 
@@ -1484,27 +1504,6 @@ class BankStatementAdmin(CustomAdminModel) :
         
         link = hyperlink(f"/static/UPI Matching.xlsx",f"Download UPI Matching",style="text-decoration:underline;color:blue;") 
         messages.success(request,mark_safe(link))
-
-    def auto_find_upi2(self,request,qs) :
-        sync_reports(limits={"collection":5*60})
-        unassigned_bank_qs = qs.filter(Q(type__isnull=True)|Q(type="upi")).values_list("amt","id","date")
-        date_amt_ids = defaultdict(lambda : defaultdict(list) )
-        
-        for amt,id,bank_date in unassigned_bank_qs : 
-            date_amt_ids[bank_date][int(amt)].append(id)
-        
-        dates = list(date_amt_ids.keys())
-        matched_bank_ids = []
-        for date in dates :
-            ikea_upi_amts_on_a_date = models.Collection.objects.filter(date = date,mode="UPI").values_list("amt",flat=True)
-            ikea_upi_amts_on_a_date = Counter(ikea_upi_amts_on_a_date)
-            for amt,times in ikea_upi_amts_on_a_date.items() : 
-                if len(date_amt_ids[date][amt]) == times : #Matched 
-                    matched_bank_ids.extend( date_amt_ids[date][amt] )
-
-        newly_identified = set(matched_bank_ids) - set( qs.filter(type__isnull=True).values_list("id",flat=True) )
-        models.BankStatement.objects.filter(id__in = matched_bank_ids).update(type="upi")
-        messages.success(request,f"Successful Identified New {len(matched_bank_ids)} {len(newly_identified)} UPI Transactions")
 
     def get_inlines(self, request, obj = None):
         if self.has_change_permission(request,obj) : 
@@ -1627,9 +1626,9 @@ class BankCollectionAdmin(CustomAdminModel) :
     def cheque_no(self,obj) :
         c = obj.cheque_entry 
         return  c.cheque_no if c else None 
-    
+
     def type(self,obj) : 
-        return obj.bank_entry.type
+        return obj.bank_entry.type if obj.bank_entry else "-"
     
     def get_queryset(self, request: HttpRequest) -> QuerySet:
         return super().get_queryset(request).filter(bank_entry__isnull = False)

@@ -3,12 +3,12 @@
 const GET_OUTSTANDING_URL = "/app/chequedeposit/get-outstanding"
 const ALLOWED_DIFF = 50 ; 
 
-function addEventListeners() { 
+function addEventListeners(static) { 
     document.querySelectorAll('.field-bill select').forEach((input,i) => {
         input.onchange  = (e) => {
             const id = e.target.value;
             if (id) {
-                fetchStaticAmt(id,i);
+                fetchStaticAmt(id,i,static);
             }
         };
     });
@@ -21,7 +21,7 @@ function addEventListeners() {
 
     document.querySelectorAll('.field-bill a').forEach((input,i) => {
         const id = input.innerText;
-            fetchStaticAmt(id,i);
+            fetchStaticAmt(id,i,true);
     });
 }
 
@@ -38,11 +38,12 @@ function addEventListeners() {
 //         .catch(error => console.error('Error fetching amt:', error));
 // }
 
-function fetchStaticAmt(id,i) {
+function fetchStaticAmt(id,i,static) {
     fetch(`${GET_OUTSTANDING_URL}/${id}/`)
         .then(response => response.json())
         .then(data => {
-            if ( data.unpushed_coll > 0 ) { 
+            console.log( data.party,  data.balance , static )
+            if ( (data.unpushed_coll > 0) && !static ) { 
                 alert("This bill "+ id +" has an unpushed collection of Rs."+ data.unpushed_coll );
             }
             document.querySelectorAll('.field-balance')[i].innerText = data.balance ;
@@ -93,7 +94,7 @@ function BaseValidateAmounts(chequeAmount) {
 }
 
 document.addEventListener('formset:added', function() {
-    addEventListeners();
+    addEventListeners(false);
 })
 
 document.addEventListener('DOMContentLoaded', function() {    
@@ -112,5 +113,5 @@ document.addEventListener('DOMContentLoaded', function() {
         id_type.onchange =  (e) => hide_function(e.target.value) ; 
         hide_function(id_type.value)
     }
-    addEventListeners();
+    addEventListeners(true);
 });
