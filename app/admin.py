@@ -1456,7 +1456,7 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
 
     @admin.display(description="Refresh IKEA Collection")
     def refresh_collection(self,request,qs) : 
-        sync_reports({"collection":None},limits={"collection":7})
+        sync_reports(limits={"collection":None},min_days_to_sync={"collection":7})
 
     def get_actions(self,request) : 
         actions = super().get_actions(request)
@@ -1612,7 +1612,8 @@ class BankCollectionAdmin(CustomAdminModel) :
 
     list_display = ["bill","party","amt","type","cheque_no","pushed"]
     permissions = [Permission.delete]
-    actions = ["push_collection"]
+    actions = ["push_collection","recheck_push"]
+    list_filter = ["pushed"]
     
     def get_actions(self, request):
         actions = super().get_actions(request)
@@ -1633,6 +1634,14 @@ class BankCollectionAdmin(CustomAdminModel) :
     def get_queryset(self, request: HttpRequest) -> QuerySet:
         return super().get_queryset(request).filter(bank_entry__isnull = False)
     
+    @admin.action(description="Recheck Pushed Collection")
+    def recheck_push(self, request, queryset):
+        sync_reports(limits = {"collection":None}, min_days_to_sync= {"collection":10})
+        for obj in queryset :    
+            pushed = models.Collection.objects.filter(bank_entry_id = obj.bank_entry_id,bill_id = obj.bill_id).exists() 
+            obj.pushed = pushed
+            obj.save()
+            
     @admin.action(description="Push Collection")
     def push_collection(self, request, queryset):
 
@@ -1961,7 +1970,7 @@ class MyAdminSite(admin.AdminSite):
             "Cheque" : {
                 "Cheque Deposit": reverse("admin:app_chequedeposit_changelist"),
                 "Bank Statement": reverse("admin:app_bankstatement_changelist"),
-                "Push To Ikea" : query_url("admin:app_bankcollection_changelist" , {"pushed":False})
+                "Push To Ikea" : query_url("admin:app_bankcollection_changelist" , {"pushed__exact":"0"})
             },
             "Others": {
                 "Beat Export": reverse("admin:app_basepackprocessstatus_changelist"),
