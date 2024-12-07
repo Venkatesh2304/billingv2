@@ -220,7 +220,7 @@ def salesman_cheque_entry_view(request):
         return render(request, 'salesman_cheque/salesman_select.html', {'form': SalesmanForm()})
     
     if request.method == "GET" : 
-        beats = models.Beat.objects.filter(salesman_name=salesman,days__contains = 'friday').values_list('name', flat=True)
+        beats = models.Beat.objects.filter(salesman_name=salesman,days__contains = datetime.date.today().strftime("%A").lower()).values_list('name', flat=True)
         parties = models.Outstanding.objects.filter(beat__in=beats).filter(balance__lte=-1).values_list('party__code',"party__name").distinct()
         cheques = models.SalesmanCollection.objects.filter(salesman=salesman,date=datetime.date.today()).values_list('party__name','amt')
         class EntryForm(forms.Form):
