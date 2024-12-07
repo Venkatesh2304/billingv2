@@ -140,21 +140,25 @@ def get_bill_in(request,delivery_date = None):
     vehicle = request.GET.get('vehicle')
 
     qs = models.Bill.objects.filter(delivered_time__date__gte =  delivery_date , vehicle = vehicle)
-    most_probable_loading_date = qs.values("loading_time__date").order_by().annotate(
-                                     date_count =  Count("bill_id")).aggregate(date = Max("date_count"))["date"]
+ 
+    most_probable_loading_date = qs.values("loading_time__date").annotate(
+                                     date_count =  Count("bill_id")).order_by("-date_count").first()
+    last_loading_date = models.Bill.objects.filter(loading_time__date__lt = delivery_date , vehicle = vehicle).order_by("-loading_time").first().loading_time
+    loading_date = most_probable_loading_date["loading_time__date"] if most_probable_loading_date else last_loading_date
+
+
     bills = list(qs.filter(loading_sheet__isnull=True).values_list("loading_time","bill_id","bill__party__name"))
     ls = list(set(qs.filter(loading_sheet__isnull=False).values_list("loading_time","loading_sheet","loading_sheet__party")))
     sorted_all_bills = sorted(bills + ls, key=lambda x: x[0] or datetime.datetime(2024,4,1,0,0,0), reverse=True)
     sorted_all_bills = [ (bill,party) for time,bill,party in sorted_all_bills ] 
     delivered_bills = sorted_all_bills
     
-    #last_loading_date = models.Bill.objects.filter(loading_time__date__lt = delivery_date , vehicle = vehicle).order_by("-loading_time").first().loading_time
-    bill_out_data = json.loads( get_bill_out(request,most_probable_loading_date).content.decode('utf-8') )
+    bill_out_data = json.loads( get_bill_out(request,loading_date).content.decode('utf-8') )
     loaded_bills = [ tuple(i) for i in bill_out_data["bills"] ] 
 
 
     missing_bills = list(set(loaded_bills) - set(delivered_bills))
-    return JsonResponse({ "bills" : missing_bills, "loading_date": most_probable_loading_date.strftime("%d %b %Y"),
+    return JsonResponse({ "bills" : missing_bills, "loading_date": loading_date.strftime("%d %b %Y"),
                           "missing_count":len(missing_bills) , "loading_count":len(set(loaded_bills)), 
                           "delivery_previous_day_count":len(set(delivered_bills) & set(loaded_bills)) , "delivery_other_day_count" : len(set(delivered_bills)- set(loaded_bills)) })
 
@@ -376,7 +380,7 @@ def sync_impact(request):
     for beat,vehicle_bills in beat_vehicle_counts.items() :
         vehicle_bill_counts = [ (len(bills),vehicle) for vehicle,bills in vehicle_bills.items() if vehicle is not None ]
         if len(vehicle_bill_counts) == 0 : continue 
-        default_vehicle = max(vehicle_bill_counts)[1]
+        default_vehicle = max(vehicle_bill_counts,key=lambda x : x[0])[1]
         for vehicle,bills in vehicle_bills.items() : 
             vehicle = vehicle or default_vehicle
             vehicle_bills_final[vehicle].extend( bills )
