@@ -1097,6 +1097,7 @@ class PrintAdmin(CustomAdminModel) :
 
             billing = Billing()
             bills = list(queryset.values_list('bill_id', flat=True))
+            if len(bills) == 0 : return 
             merger = PdfMerger()
             for print_type in print_types:
                 allow_already_printed = self.PRINT_ACTION_CONFIG[print_type]["allow_printed"]
@@ -1451,12 +1452,8 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
     list_display_links = ["date","amt"]
     ordering = ["-date"]
     permissions = [Permission.change,Permission.delete]
-    actions = ["auto_find_upi","refresh_collection"]
-    empty_actions = ["auto_find_upi","refresh_collection"]
-
-    @admin.display(description="Refresh IKEA Collection")
-    def refresh_collection(self,request,qs) : 
-        sync_reports(limits={"collection":None},min_days_to_sync={"collection":7})
+    actions = ["auto_match_upi","refresh_collection"]
+    empty_actions = ["auto_match_upi","refresh_collection"]
 
     def get_actions(self,request) : 
         actions = super().get_actions(request)
@@ -1474,13 +1471,17 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
             queryset = queryset.filter(cheque_entry__isnull=True)
             return queryset
     
-    #Not used (for fuuture uses)
+    #Not used (for future uses)
     class IkeaCollectionInline(admin.TabularInline) : 
         model = models.Collection
         verbose_name_plural = "IKEA Pushed Collection"
     
-    @admin.display(description="Auto Match UPI")
-    def auto_find_upi(self,request,qs) :
+    @admin.action(description="Refresh Ikea Collection")
+    def refresh_collection(self,request,qs) : 
+        sync_reports(limits={"collection":None},min_days_to_sync={"collection":7})
+
+    @admin.action(description="Auto Match UPI")
+    def auto_match_upi(self,request,qs) :
         qs = models.BankStatement.objects.filter(Q(type__isnull=True)|Q(type="upi")).filter(date__gte = datetime.date.today() - datetime.timedelta(days=7)) 
         fromd = qs.aggregate(Min("date"))["date__min"]
         tod = qs.aggregate(Max("date"))["date__max"]
@@ -1560,8 +1561,8 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
             Submit = submit_button("Upload")
             Action = ""
 
-        # if request.method == 'GET' :
-        #     sync_reports({"sales":60*60,"adjustment":60*60,"collection":10*60})
+        if request.method == 'GET' :
+            sync_reports(limits = {"collection":10*60})
 
         form = BankStatementUploadForm()
         if request.method == 'POST' and (request.POST.get("action") is None):
@@ -1612,7 +1613,7 @@ class BankCollectionAdmin(CustomAdminModel) :
 
     list_display = ["bill","party","amt","type","cheque_no","pushed"]
     permissions = [Permission.delete]
-    actions = ["push_collection","recheck_push"]
+    actions = ["push_collection","recheck_pushed_coll"]
     list_filter = ["pushed"]
     
     def get_actions(self, request):
@@ -1634,8 +1635,8 @@ class BankCollectionAdmin(CustomAdminModel) :
     def get_queryset(self, request: HttpRequest) -> QuerySet:
         return super().get_queryset(request).filter(bank_entry__isnull = False)
     
-    @admin.action(description="Recheck Pushed Collection")
-    def recheck_push(self, request, queryset):
+    @admin.action(description="Re-Check Pushed Collection")
+    def recheck_pushed_coll(self, request, queryset):
         sync_reports(limits = {"collection":None}, min_days_to_sync= {"collection":10})
         for obj in queryset :    
             pushed = models.Collection.objects.filter(bank_entry_id = obj.bank_entry_id,bill_id = obj.bill_id).exists() 
@@ -1676,6 +1677,11 @@ class BankCollectionAdmin(CustomAdminModel) :
         sucessfull_coll = cheque_upload_status[cheque_upload_status["Status"] == "Success"]
 
         settle_coll:pd.DataFrame = billing.download_settle_cheque() # type: ignore
+        if "CHEQUE NO" not in settle_coll.columns : 
+            link = hyperlink(f"/static/cheque_upload_status.xlsx",f"Download Ikea Push Summary",style="text-decoration:underline;color:blue;") 
+            messages.error(request,mark_safe(link))
+            return 
+
         settle_coll = settle_coll[ settle_coll.apply(lambda row : (str(row["CHEQUE NO"]),row["BILL NO"]) in bill_chq_pairs ,axis=1) ]
         settle_coll["STATUS"] = "SETTLED"
         f = BytesIO()
@@ -1692,16 +1698,13 @@ class BankCollectionAdmin(CustomAdminModel) :
             models.BankCollection.objects.filter(bank_entry_id = chq_no,bill_id = bill_no).update(pushed = True)
 
         sync_reports({"collection" : None})
-        bytes_io.seek(0)
-        summary = BytesIO()
-        with pd.ExcelWriter(summary, engine='xlsxwriter') as writer:
+        with pd.ExcelWriter(open("push_cheque_ikea.xlsx","wb+"), engine='xlsxwriter') as writer:
             cheque_upload_status.to_excel(writer,sheet_name="Manual Collection")
             cheque_settlement.to_excel(writer,sheet_name="Cheque Settlement")
-        summary.seek(0)
-        response = HttpResponse(summary, content_type='application/vnd.ms-excel')
-        response['Content-Disposition'] = 'attachment; filename="' + f"Uploaded Collection.xlsx" + '"'
-        return response 
-                                
+
+        link = hyperlink(f"/static/push_cheque_ikea.xlsx",f"Download Ikea Push Summary",style="text-decoration:underline;color:blue;") 
+        messages.success(request,mark_safe(link))
+                       
     def changelist_view(self, request: HttpRequest, extra_context = {}) -> TemplateResponse:
         return super().changelist_view(request, {"title" : "Push Pending Collection to IKEA"} | extra_context)
     
