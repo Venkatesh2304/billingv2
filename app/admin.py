@@ -1541,6 +1541,10 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
             if obj.type == "cheque" : 
                 models.BankCollection.objects.filter(cheque_entry = obj.cheque_entry).update(bank_entry = obj)
 
+
+        if (obj.type != "cheque") : 
+            obj.cheque_entry = None
+            
         super().save_model(request, obj, form, change)
        
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
