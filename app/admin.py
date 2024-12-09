@@ -1307,6 +1307,7 @@ class ChequeDepositAdmin(CustomAdminModel) :
 
     def has_change_permission(self, request, obj=None):
         if (obj and hasattr(obj,"bank_entry")) and (obj.bank_entry is not None) : 
+            messages.success(request,f"Bank Entry is already created for this cheque deposit {obj.bank_entry}")
             return False 
         return super().has_change_permission(request, obj)
     
