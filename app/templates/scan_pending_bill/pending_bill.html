@@ -69,6 +69,7 @@
                         <option value="qrcode_not_found" {% if obj.bill_status == "qrcode_not_found" %}selected{% endif %}>QR code not found</option>
                         <option value="loading_sheet" {% if obj.bill_status == "loading_sheet" %}selected{% endif %}>Salesman Loading Sheet</option>
                         <option value="sales_return" {% if obj.bill_status == "sales_return" %}selected{% endif %}>Sales Return</option>
+                        <option value="bill_with_shop" {% if obj.bill_status == "bill_with_shop" %}selected{% endif %}>Bill With Shop</option>
                         <option value="others" {% if obj.bill_status == "others" %}selected{% endif %}>Other Reason</option>
                     </select>
                 </div>

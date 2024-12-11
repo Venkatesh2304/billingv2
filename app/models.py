@@ -386,6 +386,7 @@ class PendingSheetBill(models.Model) :
                                                           ("qrcode_not_found","qrcode_not_found"),
                                                           ("loading_sheet","loading_sheet"),
                                                           ("sales_return","sales_return"),
+                                                          ("bill_with_shop","Bill With Shop"),
                                                           ("others","Other Reason"),
                                                           ),null=True,default="scanned")
     class Meta : 

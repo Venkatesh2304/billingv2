@@ -1307,7 +1307,6 @@ class ChequeDepositAdmin(CustomAdminModel) :
 
     def has_change_permission(self, request, obj=None):
         if (obj and hasattr(obj,"bank_entry")) and (obj.bank_entry is not None) : 
-            messages.success(request,f"Bank Entry is already created for this cheque deposit {obj.bank_entry}")
             return False 
         return super().has_change_permission(request, obj)
     
@@ -1541,10 +1540,9 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
             if obj.type == "cheque" : 
                 models.BankCollection.objects.filter(cheque_entry = obj.cheque_entry).update(bank_entry = obj)
 
-
         if (obj.type != "cheque") : 
             obj.cheque_entry = None
-            
+
         super().save_model(request, obj, form, change)
        
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
@@ -1576,25 +1574,29 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
                 excel_file = request.FILES['excel_file']
                 bank_name = "sbi" if excel_file.name.endswith("xls") else "kvb" #form.cleaned_data["bank"]
                 df = pd.DataFrame()
-                bank_index = 0 
-
+                bank_index = 0
+ 
+                def skiprows_excel(excel_file,first_col_name,sep) : 
+                    df = pd.read_csv(excel_file , skiprows=0 , sep=sep , names = list(range(1,100)) , header = None)
+                    skiprows = -1 
+                    for i in range(0,20) : 
+                        if df.iloc[i][1] == first_col_name : 
+                            skiprows = i 
+                            break
+                    df.columns = df.iloc[skiprows]
+                    df = df.iloc[skiprows+1:]
+                    return df
+                    
                 if bank_name == "sbi" : 
                     bank_index = 0 
-                    df = pd.read_csv(excel_file , skiprows=17 , sep="\t")
+                    df = skiprows_excel(excel_file,"Txn Date",sep = "\t")
                     df = df.rename(columns={"Txn Date":"date","Credit":"amt","Ref No./Cheque No.":"ref","Description":"desc"})
                     df = df.iloc[:-1]
                     df["date"] = pd.to_datetime(df["date"],format='%d %b %Y')
 
                 if bank_name == "kvb" : 
                     bank_index = 1
-                    df = pd.read_csv(excel_file , skiprows=0 , sep="," , names =[1,2,3,4,5,6,7,8] , header = None)
-                    skiprows = -1 
-                    for i in range(0,20) : 
-                        if df.iloc[i][1] == "\tTransaction Date" : 
-                            skiprows = i 
-                            break
-                    df.columns = df.iloc[skiprows]
-                    df = df.iloc[skiprows+1:]
+                    df = skiprows_excel(excel_file,"\tTransaction Date",sep = ",")
                     df = df.rename(columns={"\tTransaction Date":"date","Credit":"amt","Cheque No.":"ref","Description":"desc"})
                     df["date"] = pd.to_datetime(df["date"],format='%d-%m-%Y %H:%M:%S')
                     df = df.sort_values("date")
