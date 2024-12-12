@@ -1452,13 +1452,13 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
     list_display_links = ["date","amt"]
     ordering = ["-date"]
     permissions = [Permission.change,Permission.delete]
-    actions = ["auto_match_upi","refresh_collection"]
-    empty_actions = ["auto_match_upi","refresh_collection"]
+    actions = ["auto_match_statement","refresh_collection"]
+    empty_actions = ["auto_match_statement","refresh_collection"]
     # change_form_template = "admin/bankstatement_change_form.html"
 
     def get_actions(self,request) : 
         actions = super().get_actions(request)
-        # if "delete_selected" in actions : actions.pop("delete_selected")
+        if "delete_selected" in actions : actions.pop("delete_selected")
         return actions
 
     @admin.display(boolean=True)
@@ -1481,9 +1481,11 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
     def refresh_collection(self,request,qs) : 
         sync_reports(limits={"collection":None},min_days_to_sync={"collection":7})
 
-    @admin.action(description="Auto Match UPI")
-    def auto_match_upi(self,request,qs) :
-        qs = models.BankStatement.objects.filter(Q(type__isnull=True)|Q(type="upi")).filter(date__gte = datetime.date.today() - datetime.timedelta(days=7)) 
+    @admin.action(description="Auto Match Statement")
+    def auto_match_statement(self,request,qs) :
+        qs = models.BankStatement.objects.filter(date__gte = datetime.date.today() - datetime.timedelta(days=14)) 
+        qs.filter(Q(desc__icontains="cash") & Q(desc__icontains="deposit")).update(type="cash_deposit")
+        qs = qs.filter(Q(type__isnull=True)|Q(type="upi"))
         fromd = qs.aggregate(Min("date"))["date__min"]
         tod = qs.aggregate(Max("date"))["date__max"]
         upi_statement:pd.DataFrame = IkeaDownloader().upi_statement(fromd - datetime.timedelta(days = 3),tod)
@@ -1518,10 +1520,10 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
                 return False 
         return super().has_change_permission(request, obj)
     
-    def has_delete_permission(self, request, obj=None):
-        if obj and obj.ikea_collection.count() : 
-            return False 
-        return super().has_delete_permission(request, obj)
+    # def has_delete_permission(self, request, obj=None):
+    #     if obj and obj.ikea_collection.count() : 
+    #         return False 
+    #     return super().has_delete_permission(request, obj)
     
     def delete_model(self, request: HttpRequest, obj: Any) -> None:
         models.BankCollection.objects.filter(bank_entry = obj).update(pushed = False)
@@ -1631,6 +1633,25 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
         extra_context['form'] = form
         return super().changelist_view(request, extra_context=extra_context | {"title" : ""})
 
+    def _delete_view(self, request, object_id, extra_context):
+        billing = IkeaDownloader()
+        qs = models.BankCollection.objects.filter(bank_entry_id = object_id)
+        if qs.count() : 
+            bill_chq_pairs = [ (bank_coll.bank_entry_id,bank_coll.bill_id) for bank_coll in qs.all() ]
+            dates = models.BankStatement.objects.filter(id = object_id).aggregate(
+                                fromd = Min("ikea_collection__date"), tod = Max("ikea_collection__date"))
+            settle_coll:pd.DataFrame = billing.download_settle_cheque("ALL",dates["fromd"],dates["tod"]) # type: ignore
+            settle_coll = settle_coll[ settle_coll.apply(lambda row : (str(row["CHEQUE NO"]),row["BILL NO"]) in bill_chq_pairs ,axis=1) ]
+            settle_coll["STATUS"] = "BOUNCED"
+            f = BytesIO()
+            settle_coll.to_excel(f,index=False)
+            f.seek(0)
+            res = billing.upload_settle_cheque(f)
+            qs.update(pushed = False)
+            sync_reports(limits = {"collection" : None})
+
+        return redirect(request.get_full_path().replace("delete","change"))
+
 class BankCollectionAdmin(CustomAdminModel) : 
 
     list_display = ["bill","party","amt","type","cheque_no","pushed"]
@@ -1655,7 +1676,7 @@ class BankCollectionAdmin(CustomAdminModel) :
         return obj.bank_entry.type if obj.bank_entry else "-"
     
     def get_queryset(self, request: HttpRequest) -> QuerySet:
-        return super().get_queryset(request).filter(bank_entry__isnull = False)
+        return super().get_queryset(request).filter(bank_entry__isnull = False).exclude(bank_entry__cheque_status = "bounced")
     
     @admin.action(description="Re-Check Pushed Collection")
     def recheck_pushed_coll(self, request, queryset):
@@ -1719,7 +1740,7 @@ class BankCollectionAdmin(CustomAdminModel) :
             bill_no = row["BillNumber"]
             models.BankCollection.objects.filter(bank_entry_id = chq_no,bill_id = bill_no).update(pushed = True)
 
-        sync_reports({"collection" : None})
+        sync_reports(limits = {"collection" : None})
         with pd.ExcelWriter(open("push_cheque_ikea.xlsx","wb+"), engine='xlsxwriter') as writer:
             cheque_upload_status.to_excel(writer,sheet_name="Manual Collection")
             cheque_settlement.to_excel(writer,sheet_name="Cheque Settlement")

@@ -101,11 +101,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const hide_function = (id) => {
         const neft_colls = document.querySelector("#collection-group")  ; 
         const matched_chq = document.querySelector(".field-cheque_entry")  ;
+        const matched_chq_status = document.querySelector(".field-cheque_status")  ;
         neft_colls.style.display = "none" ; 
         matched_chq.style.display = "none" ; 
+        matched_chq_status.style.display = "none" ;
         if (id) {
             if ( id == "neft" ) {  neft_colls.style.display = "block" ;  }
-            if ( id == "cheque") { matched_chq.style.display  = "block" ;  }
+            if ( id == "cheque") { 
+                matched_chq.style.display  = "block" ;  
+                if (document.querySelector("#id_cheque_entry").value != "") { 
+                    matched_chq_status.style.display  = "block" ;  
+                }
+            }
         }
     };
     const id_type = document.querySelector('#id_type') ; 

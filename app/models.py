@@ -358,9 +358,9 @@ class BankStatement(models.Model) :
     desc = models.TextField(max_length=200)
     amt = models.IntegerField()
     bank = models.TextField(max_length=20,choices=zip(BANK_CHOICES,BANK_CHOICES))
-    type = models.TextField(max_length=15,choices=(("cheque","Cheque"),("neft","NEFT"),("upi","UPI (IKEA)"),("cash","Cash Deposit"),("others","Others")),null=True)
+    type = models.TextField(max_length=15,choices=(("cheque","Cheque"),("neft","NEFT"),("upi","UPI (IKEA)"),("cash_deposit","Cash Deposit"),("self_transfer","Self Transfer"),("others","Others")),null=True)
     cheque_entry = models.OneToOneField("app.ChequeDeposit", on_delete=models.DO_NOTHING, null=True, blank=True, related_name='bank_entry')
-
+    cheque_status = models.TextField(choices=(("passed","Passed"),("bounced","Bounced")),default="passed")
     class Meta : 
         unique_together = ('date','idx','bank')
         verbose_name_plural = 'Bank'
