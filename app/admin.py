@@ -1447,7 +1447,7 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
     list_display = ["date","ref","desc","amt","bank","saved","type","id"]
     readonly_fields = ["amt","desc","date","ref","bank","idx","id"]
     hidden_fields = ["idx"]
-    list_filter = ["date","type"]
+    list_filter = ["date","type","bank"]
     # search_fields = ["amt","desc"]
     list_display_links = ["date","amt"]
     ordering = ["-date"]
@@ -1457,7 +1457,7 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
 
     def get_actions(self,request) : 
         actions = super().get_actions(request)
-        if "delete_selected" in actions : actions.pop("delete_selected")
+        # if "delete_selected" in actions : actions.pop("delete_selected")
         return actions
 
     @admin.display(boolean=True)
@@ -1574,41 +1574,53 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
                 excel_file = request.FILES['excel_file']
                 bank_name = "sbi" if excel_file.name.endswith("xls") else "kvb" #form.cleaned_data["bank"]
                 df = pd.DataFrame()
-                bank_index = 0
  
-                def skiprows_excel(excel_file,first_col_name,sep) : 
-                    df = pd.read_csv(excel_file , skiprows=0 , sep=sep , names = list(range(1,100)) , header = None)
+                def skiprows_excel(excel_file,col_name,col_number,sep) : 
+                    df = pd.read_csv(excel_file , skiprows=0 , sep=sep , names = list(range(0,100)) , header = None)
                     skiprows = -1 
+                    acc_no = None 
                     for i in range(0,20) : 
-                        if df.iloc[i][1] == first_col_name : 
+                        if df.iloc[i][col_number] == col_name : 
                             skiprows = i 
                             break
+                        x = df.iloc[i][0]
+                        if (type(x) == str) and ("account number" in x.lower()) :
+                            acc_no = df.iloc[i][1]
                     df.columns = df.iloc[skiprows]
                     df = df.iloc[skiprows+1:]
-                    return df
-                    
+                    return df,acc_no 
+                
+                ACC_BANKS = {"_00000042540766421":"SBI OD",'="1889135000001946"':"KVB CA","_00000042536033659":"SBI CA"}
+                acc = None 
+
                 if bank_name == "sbi" : 
-                    bank_index = 0 
-                    df = skiprows_excel(excel_file,"Txn Date",sep = "\t")
+                    df,acc = skiprows_excel(excel_file,"Txn Date",col_number=0,sep = "\t")
                     df = df.rename(columns={"Txn Date":"date","Credit":"amt","Ref No./Cheque No.":"ref","Description":"desc"})
                     df = df.iloc[:-1]
                     df["date"] = pd.to_datetime(df["date"],format='%d %b %Y')
 
                 if bank_name == "kvb" : 
-                    bank_index = 1
-                    df = skiprows_excel(excel_file,"\tTransaction Date",sep = ",")
+                    df,acc = skiprows_excel(excel_file,"\tTransaction Date",col_number=1,sep = ",")
                     df = df.rename(columns={"\tTransaction Date":"date","Credit":"amt","Cheque No.":"ref","Description":"desc"})
                     df["date"] = pd.to_datetime(df["date"],format='%d-%m-%Y %H:%M:%S')
                     df = df.sort_values("date")
                     df["ref"] = df["ref"].astype(str).str.split(".").str[0]
 
+                if acc and (acc in ACC_BANKS) :
+                    bank_name = ACC_BANKS[acc]
+                else : 
+                    raise Exception(f"Bank acc no : {acc} doesn't have a bank")
+
                 df["idx"] = df.groupby(df["date"].dt.date).cumcount() + 1 
                 df = df[["date","ref","desc","amt","idx"]]
                 df["bank"] = bank_name 
-                df["id"] = (lambda date, number: (( 10*bank_index + (date.dt.year - 2020)) * 12 * 31  + date.dt.month * 31  + date.dt.day) * 100 + number)(df.date,df.idx).astype(str)
+                free_ids = list(set(range(100000,999999)) - set(query_db("SELECT id FROM app_bankstatement",is_select=True)["id"]))
+                df["id"] = pd.Series(free_ids[:len(df.index)],index=df.index)
+                # df["id"] = (lambda date, number: (( 10*bank_index + (date.dt.year - 2020)) * 12 * 31  + date.dt.month * 31  + date.dt.day) * 100 + number)(df.date,df.idx).astype(str)
                 df["date"] = df["date"].dt.date
                 df = df[df.amt != ""][df.amt.notna()]
                 df.amt = df.amt.astype(str).str.replace(",","").apply(lambda x  : float(x.strip()) if x.strip() else 0)
+                df = df[df.amt != 0]
                 bulk_raw_insert("bankstatement",df,ignore=True)
                 messages.success(request, "Statement successfully uploaded")
             else : 

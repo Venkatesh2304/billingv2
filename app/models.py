@@ -350,13 +350,14 @@ class BankCollection(models.Model) :
           unique_together = ('bill', 'cheque_entry', 'bank_entry')
 
 class BankStatement(models.Model) : 
+    BANK_CHOICES = ["KVB CA","SBI CA","SBI OD"]
     date = models.DateField()
     idx = models.IntegerField()
     id = models.CharField(max_length=15,primary_key=True)
     ref = models.TextField(max_length=200)
     desc = models.TextField(max_length=200)
     amt = models.IntegerField()
-    bank = models.TextField(max_length=20,choices=(("sbi","SBI"),("kvb","KVB")))
+    bank = models.TextField(max_length=20,choices=zip(BANK_CHOICES,BANK_CHOICES))
     type = models.TextField(max_length=15,choices=(("cheque","Cheque"),("neft","NEFT"),("upi","UPI (IKEA)"),("cash","Cash Deposit"),("others","Others")),null=True)
     cheque_entry = models.OneToOneField("app.ChequeDeposit", on_delete=models.DO_NOTHING, null=True, blank=True, related_name='bank_entry')
 
