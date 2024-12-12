@@ -157,7 +157,7 @@ class IkeaDownloader(BaseIkea) :
           return self.report("ikea/outstanding",r'(":val9":").{10}(.{34}).{10}', (date.strftime("%Y-%m-%d"),date.strftime("%Y-%m-%d"))  ) 
       
       def download_manual_collection(self)  : 
-          return self.report("ikea/donwload_manual_collection",r'(":val10":").{10}', (datetime.date.today().strftime("%d/%m/%Y"),)  ) 
+          return self.report("ikea/download_manual_collection",r'(":val10":").{10}', (datetime.date.today().strftime("%d/%m/%Y"),)  ) 
       
       def upload_manual_collection(self,file : BytesIO) -> dict :
           files = {
