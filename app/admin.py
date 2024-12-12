@@ -1483,7 +1483,7 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
 
     @admin.action(description="Auto Match Statement")
     def auto_match_statement(self,request,qs) :
-        qs = models.BankStatement.objects.filter(date__gte = datetime.date.today() - datetime.timedelta(days=14)) 
+        qs = models.BankStatement.objects.filter(date__gte = datetime.date.today() - datetime.timedelta(days=7)) 
         qs.filter(Q(desc__icontains="cash") & Q(desc__icontains="deposit")).update(type="cash_deposit")
         qs = qs.filter(Q(type__isnull=True)|Q(type="upi"))
         fromd = qs.aggregate(Min("date"))["date__min"]
