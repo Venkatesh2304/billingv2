@@ -1,0 +1,8 @@
+{% extends "admin/change_form.html" %}
+{% block submit_buttons_bottom %}
+ {% if show_delete_link and original %}
+ {% else %}  
+    <div class="submit-row"> <a href="/app/bankstatement/100014/" class="deletelink">Delete All Ikea Collections</a> </div>
+ {% endif %}
+ {{block.super}}
+{% endblock %}

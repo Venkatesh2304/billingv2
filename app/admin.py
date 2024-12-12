@@ -1454,6 +1454,7 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
     permissions = [Permission.change,Permission.delete]
     actions = ["auto_match_upi","refresh_collection"]
     empty_actions = ["auto_match_upi","refresh_collection"]
+    # change_form_template = "admin/bankstatement_change_form.html"
 
     def get_actions(self,request) : 
         actions = super().get_actions(request)
@@ -1614,13 +1615,15 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
                 df["idx"] = df.groupby(df["date"].dt.date).cumcount() + 1 
                 df = df[["date","ref","desc","amt","idx"]]
                 df["bank"] = bank_name 
-                free_ids = list(set(range(100000,999999)) - set(query_db("SELECT id FROM app_bankstatement",is_select=True)["id"]))
+                free_ids = list(set(range(100000,999999)) - set(query_db("SELECT CAST(id as INT) as id FROM app_bankstatement",is_select=True)["id"]))
                 df["id"] = pd.Series(free_ids[:len(df.index)],index=df.index)
                 # df["id"] = (lambda date, number: (( 10*bank_index + (date.dt.year - 2020)) * 12 * 31  + date.dt.month * 31  + date.dt.day) * 100 + number)(df.date,df.idx).astype(str)
                 df["date"] = df["date"].dt.date
+                print( df )
                 df = df[df.amt != ""][df.amt.notna()]
                 df.amt = df.amt.astype(str).str.replace(",","").apply(lambda x  : float(x.strip()) if x.strip() else 0)
                 df = df[df.amt != 0]
+                print( df )
                 bulk_raw_insert("bankstatement",df,ignore=True)
                 messages.success(request, "Statement successfully uploaded")
             else : 

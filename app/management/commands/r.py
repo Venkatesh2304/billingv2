@@ -3,7 +3,7 @@ import json
 import re
 from datetime import datetime
 from custom.classes import IkeaDownloader
-print( IkeaDownloader().loading_sheet(["A60162"]) )
+print( IkeaDownloader().download_settle_cheque("ALL",fromd=datetime(2024,12,1)) )
 sdf 
 
 # Load the Excel file
