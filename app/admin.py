@@ -204,6 +204,7 @@ def sync_reports(billing = None,limits = {},min_days_to_sync = {},retry_no=3) ->
     if billing is None : billing = Billing()
     with ThreadPoolExecutor() as executor:
         futures = []
+        print(1,insert_types_to_update)
         for insert_type in insert_types_to_update : 
             functions = function_mappings[insert_type]
 
