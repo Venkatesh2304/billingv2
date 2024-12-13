@@ -204,7 +204,6 @@ def sync_reports(billing = None,limits = {},min_days_to_sync = {},retry_no=3) ->
     if billing is None : billing = Billing()
     with ThreadPoolExecutor() as executor:
         futures = []
-        print(1,insert_types_to_update)
         for insert_type in insert_types_to_update : 
             functions = function_mappings[insert_type]
 
@@ -1643,12 +1642,10 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
                 df["id"] = pd.Series(free_ids[:len(df.index)],index=df.index)
                 # df["id"] = (lambda date, number: (( 10*bank_index + (date.dt.year - 2020)) * 12 * 31  + date.dt.month * 31  + date.dt.day) * 100 + number)(df.date,df.idx).astype(str)
                 df["date"] = df["date"].dt.date
-                print( df )
                 df = df[df.amt != ""][df.amt.notna()]
                 df.amt = df.amt.astype(str).str.replace(",","").apply(lambda x  : float(x.strip()) if x.strip() else 0)
                 df = df[df.amt != 0]
-                print( df )
-                bulk_raw_insert("bankstatement",df,ignore=True)
+                bulk_raw_insert("bankstatement",df,ignore=False)
                 messages.success(request, "Statement successfully uploaded")
             else : 
                 messages.error(request, "Statement upload failed")
