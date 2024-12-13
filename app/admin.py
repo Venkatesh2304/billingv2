@@ -1,6 +1,8 @@
 import base64
 from collections import Counter, defaultdict
 from collections import abc
+import random
+from django.db import transaction
 import datetime
 from functools import partial, update_wrapper
 import functools
@@ -178,10 +180,11 @@ def check_last_sync(type,limit) :
             raise Exception(f"Limit specified for {type} = {limit} is not an instance of int,datetime.date or datetime.datetime")
     return False 
 
-def sync_reports(billing = None,limits = {},min_days_to_sync = {}) -> bool :
+def sync_reports(billing = None,limits = {},min_days_to_sync = {},retry_no=3) -> bool :
+    today = datetime.date.today()
     min_days_to_sync = defaultdict(lambda : 2 , min_days_to_sync )
     get_sync_from_date_for_model = lambda model_class : max(min( model_class.objects.aggregate(date = Max("date"))["date"] or START_DATE ,
-                                                    datetime.date.today() - datetime.timedelta(days=min_days_to_sync[model_class.__name__.lower()]) ), START_DATE)
+                                                    today - datetime.timedelta(days=min_days_to_sync[model_class.__name__.lower()]) ), START_DATE)
     
     DeleteType = Enum("DeleteType","datewise all none")
     FunctionTuple = namedtuple("function_tuple",["download_function","model","insert_function","has_date_arg","delete_type"])
@@ -203,28 +206,44 @@ def sync_reports(billing = None,limits = {},min_days_to_sync = {}) -> bool :
         futures = []
         for insert_type in insert_types_to_update : 
             functions = function_mappings[insert_type]
+
+            def retry_wrapped_download_fn(*args) :
+                for retry in range(retry_no) :
+                    try : 
+                        return functions.download_function(*args) 
+                    except Exception as e : 
+                        traceback.print_exc()
+                        print(f"Error in Downloading {insert_type} : {e}")
+                raise Exception(f"Failed Downloading {insert_type} after {retry_no} retries")
+
             if functions.has_date_arg : 
                 last_updated_date = get_sync_from_date_for_model(functions.model)
-                futures.append( executor.submit(functions.download_function, billing, last_updated_date, datetime.date.today()) )
+                futures.append( executor.submit(retry_wrapped_download_fn, billing, last_updated_date, today) )
             else : ## No date argument required 
-                futures.append( executor.submit(functions.download_function, billing) )
+                futures.append( executor.submit(retry_wrapped_download_fn, billing) )
 
         for insert_type,future in zip(insert_types_to_update,futures) :
             functions = function_mappings[insert_type]
-            df = future.result()
+            try : 
+                df = future.result()
+                with transaction.atomic():
+                    if functions.delete_type == DeleteType.datewise : 
+                        last_updated_date = get_sync_from_date_for_model(functions.model)
+                        functions.model.objects.filter(date__gte = last_updated_date).delete()
+                    elif functions.delete_type == DeleteType.all : 
+                        functions.model.objects.all().delete()
+                    elif functions.delete_type == DeleteType.none : 
+                        pass 
+                    else : 
+                        raise Exception(f"{functions.delete_type} is not a valid delete type")
+                    functions.insert_function(df)
+                    models.Sync.objects.update_or_create(process = insert_type.capitalize() , defaults={"time" : datetime.datetime.now()})
+                    break 
+            except Exception as e : 
+                traceback.print_exc()
+                print(f"Error in Syncing {insert_type} : {e}")
 
-            if functions.delete_type == DeleteType.datewise : 
-                last_updated_date = get_sync_from_date_for_model(functions.model)
-                functions.model.objects.filter(date__gte = last_updated_date).delete()
-            elif functions.delete_type == DeleteType.all : 
-                functions.model.objects.all().delete()
-            elif functions.delete_type == DeleteType.none : 
-                pass 
-            else : 
-                raise Exception(f"{functions.delete_type} is not a valid delete type")
 
-            functions.insert_function(df)
-            models.Sync.objects.update_or_create( process = insert_type.capitalize() , defaults={"time" : datetime.datetime.now()})
     return True 
 
             

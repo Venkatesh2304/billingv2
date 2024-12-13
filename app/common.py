@@ -79,18 +79,18 @@ def bulk_raw_insert(table,df,upsert=False,ignore=True,is_partial_upsert=False,in
     query_db( query , many=True , values=rows["data"] )
 
 def query_db(query,many=False,values=[],is_select=False) : 
-    # from django.db import connection
     import os 
-    connection = sqlite3.connect(f'db.sqlite3')
-    cursor = connection.cursor()
-    
-    if is_select : result = pd.read_sql(query,connection)
-    elif many : cursor.executemany( query , values )
-    else : cursor.execute( query )
-    
-    connection.commit()
-    connection.close()
-    if is_select : return result 
+    from django.db import connection
+    import time 
+ 
+    # connection = sqlite3.connect(f'db.sqlite3')
+    s = time.time()
+    with connection.cursor() as cursor:
+        if is_select : result = pd.read_sql(query,connection)
+        elif many : cursor.executemany( query , values )
+        else : cursor.execute( query )
+        if is_select : return result 
+    print("Time Taken : ",time.time()-s)
 
 update_rt_txval_query = lambda cond : f"""UPDATE app_inventory SET 
                               (rt,txval) = (SELECT rt,ROUND(txval*100/(100+2*rt),3) FROM app_stock WHERE name=stock_id)

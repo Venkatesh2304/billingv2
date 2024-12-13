@@ -10,6 +10,16 @@ from app.models import *
 import warnings
 warnings.filterwarnings("ignore")
 pd.options.display.float_format = '{:.2f}'.format
+
+
+# def a() : 
+#     df1 = pd.read_excel("df1.xlsx")
+#     df2 = pd.read_excel("df2.xlsx")
+#     x = df1 != df2 
+#     return x[x.sum(axis=1) > 0]
+
+# print(a())
+
 # for file in glob.glob("custom/curl/**/*.txt", recursive=True) : 
 #     save_request(file)
 
@@ -31,6 +41,9 @@ pd.options.display.float_format = '{:.2f}'.format
 # exit(0)
 from app.models import Orders,OrderProducts,PendingSheet
 cur = connection.cursor()
+df = pd.read_sql(f"select * from app_collection where date = '2024-11-30'",connection)
+print(df)
+sdf
 # cur.execute("update app_bankstatement set bank = 'KVB CA' where bank = 'kvb' ")
 # cur.execute("update app_bankstatement set bank = 'SBI OD' where bank = 'sbi' ")
 # asd
@@ -48,8 +61,9 @@ cur = connection.cursor()
 # df = pd.read_sql(f"select * from app_pendingsheet where ",connection)
 # df = pd.read_sql(f"select * from app_pendingsheet where sheet_no = 'PS031224544'",connection)
 # print( df )
+# df = pd.read_sql(f"select * from app_billing order by start_time desc",connection)
 df = pd.read_sql(f"select distinct(date) from app_collection order by date desc",connection)
-df.to_excel("a.xlsx")
+df.to_excel("c.xlsx")
 print( df )
 sdf
 print( pd.read_sql(f"select * from app_bill where bill_id = 'A60277'",connection) )

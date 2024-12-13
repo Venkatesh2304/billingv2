@@ -1,10 +1,62 @@
+import time
 import pandas as pd
 import json
 import re
 from datetime import datetime
 from custom.classes import IkeaDownloader
-from app.admin import sync_reports 
+from app.admin import sync_reports,query_db 
+import os 
+import app.models as models
+import pandas as pd
+from datetime import date 
+from unittest.mock import patch
+import unittest
+from django.db.models import Count
+
+for date1 in pd.date_range(datetime(2024,12,1),datetime(2024,12,12),freq="1D") : 
+    sync_reports(limits={"collection":None},today=date1.date(),min_days_to_sync={"collection":2})
+    x = models.Collection.objects.filter(date__gte = date(2024,11,27)).values("date").annotate(count = Count("date")).values_list("date","count")
+    print(list(x))
+    sdf
+
+
+
+
+p = models.Sales.objects.all().count()
+for i in range(10) :
+    sync_reports(limits={"sales":None})
+    if p != models.Sales.objects.all().count() : 
+        print("New Collection Added")
+        break
+    print("No New Collection Added")
+sdfsdf
+##Give 
+df1 = None 
+df2 = None 
+
+for i in range(1,13) : 
+    df2 = IkeaDownloader().collection(fromd=datetime(2024,12,5),tod=datetime(2024,12,12)).fillna("-")
+    del df2["Sr No"]
+    df2 = df2[df2["Collection Refr"] != "-"]
+    df2 = df2.sort_values("Collection Refr").reset_index(drop=True)
+    df2["Collection Date"] = pd.to_datetime(df2["Collection Date"],dayfirst=True).dt.date
+    if df1 is not None  : 
+         is_equal = df1.equals(df2) 
+         if not is_equal : 
+             print("Not Equal",i)
+             break 
+    df1 = df2 
+    print(i+1," Passed")
+
+if df1 is not None  : df1.to_excel("df1.xlsx")
+if df2 is not None  : df2.to_excel("df2.xlsx")
+
+
+        
+
+
 # sync_reports({"collection" : None })
+
 # print( IkeaDownloader().download_settle_cheque("ALL",fromd=datetime(2024,12,1)) )
 sdf 
 

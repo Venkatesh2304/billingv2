@@ -182,8 +182,12 @@ class IkeaDownloader(BaseIkea) :
           return self.report("ikea/current_stock",r'(":val16":").{10}', (date.strftime("%Y-%m-%d"),))
       
       def sales_reg(self,fromd,tod) : 
-          return self.report("ikea/sales_reg",r'(":val1":").{10}(",":val2":").{10}' ,
+          df = self.report("ikea/sales_reg",r'(":val1":").{10}(",":val2":").{10}' ,
                                                        (fromd.strftime("%d/%m/%Y"),tod.strftime("%d/%m/%Y")) )
+          date_column = "BillDate/Sales Return Date"
+          df[date_column] = pd.to_datetime(df[date_column],format="%Y-%m-%d").dt.date
+          return df 
+      
       
       def download_moc(self,fromd,tod,key,pat,sheet_name,date_column,is_slash=True,date_checker = None) :
           dfs = []

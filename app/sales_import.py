@@ -76,7 +76,6 @@ def SalesInsert(sales_reg,gst=None,permanent=False) :
     
    df[SALES_DISC_COLUMS] = -df[SALES_DISC_COLUMS]
    df["crdsales"] = df["Crd Sales"] - df["Sal Ret"]
-   df["date"] = pd.to_datetime(df.date,format="%Y-%m-%d").dt.date
    
    sales_gst = None 
    if gst is not None : 
