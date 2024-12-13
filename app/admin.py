@@ -1624,7 +1624,7 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
                     df["date"] = pd.to_datetime(df["date"],format='%d %b %Y')
 
                 if bank_name == "kvb" : 
-                    df,acc = skiprows_excel(excel_file,"\tTransaction Date",col_number=1,sep = ",")
+                    df,acc = skiprows_excel(excel_file,"\tTransaction Date",col_number=0,sep = ",")
                     df = df.rename(columns={"\tTransaction Date":"date","Credit":"amt","Cheque No.":"ref","Description":"desc"})
                     df["date"] = pd.to_datetime(df["date"],format='%d-%m-%Y %H:%M:%S')
                     df = df.sort_values("date")
