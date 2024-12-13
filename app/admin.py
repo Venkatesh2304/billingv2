@@ -1645,7 +1645,7 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
                 df = df[df.amt != ""][df.amt.notna()]
                 df.amt = df.amt.astype(str).str.replace(",","").apply(lambda x  : float(x.strip()) if x.strip() else 0)
                 df = df[df.amt != 0]
-                bulk_raw_insert("bankstatement",df,ignore=False)
+                bulk_raw_insert("bankstatement",df,ignore=True)
                 messages.success(request, "Statement successfully uploaded")
             else : 
                 messages.error(request, "Statement upload failed")
