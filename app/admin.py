@@ -210,7 +210,8 @@ def sync_reports(billing = None,limits = {},min_days_to_sync = {},retry_no=3) ->
             def retry_wrapped_download_fn(*args) :
                 for retry in range(retry_no) :
                     try : 
-                        return functions.download_function(*args) 
+                        df = functions.download_function(*args) 
+                        return df
                     except Exception as e : 
                         traceback.print_exc()
                         print(f"Error in Downloading {insert_type} : {e}")
