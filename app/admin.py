@@ -1738,7 +1738,7 @@ class BankCollectionAdmin(CustomAdminModel) :
         sucessfull_coll = cheque_upload_status[cheque_upload_status["Status"] == "Success"]
 
         settle_coll:pd.DataFrame = billing.download_settle_cheque() # type: ignore
-        
+        settle_coll.to_excel("a.xlsx")
         if "CHEQUE NO" not in settle_coll.columns : 
             link = hyperlink(f"/static/cheque_upload_status.xlsx",f"Download Ikea Push Summary",style="text-decoration:underline;color:blue;") 
             messages.error(request,mark_safe(link))
