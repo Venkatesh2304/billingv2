@@ -41,7 +41,8 @@ pd.options.display.float_format = '{:.2f}'.format
 # exit(0)
 from app.models import Orders,OrderProducts,PendingSheet
 cur = connection.cursor()
-df = pd.read_sql(f"select * from app_collection where date = '2024-11-30'",connection)
+df = pd.read_sql(f"select bill_id,-amt from app_bill join app_sales on bill_id=inum where loading_sheet_id is not NULL",connection)
+df.to_excel("a.xlsx")
 print(df)
 sdf
 # cur.execute("update app_bankstatement set bank = 'KVB CA' where bank = 'kvb' ")

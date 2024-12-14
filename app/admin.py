@@ -1043,7 +1043,6 @@ class PrintAdmin(CustomAdminModel) :
         bytesio = billing.einvoice_json(fromd=from_date, tod=to_date, bills=inums)
         if bytesio : 
             json_str = bytesio.getvalue().decode('utf-8')  # Convert BytesIO to string
-            print(json_str)
             success, failures = Einvoice().upload(json_str)
             failed_inums = failures.get("Invoice No", []).tolist()
             if failures.shape[0]:
@@ -1739,6 +1738,7 @@ class BankCollectionAdmin(CustomAdminModel) :
         sucessfull_coll = cheque_upload_status[cheque_upload_status["Status"] == "Success"]
 
         settle_coll:pd.DataFrame = billing.download_settle_cheque() # type: ignore
+        
         if "CHEQUE NO" not in settle_coll.columns : 
             link = hyperlink(f"/static/cheque_upload_status.xlsx",f"Download Ikea Push Summary",style="text-decoration:underline;color:blue;") 
             messages.error(request,mark_safe(link))

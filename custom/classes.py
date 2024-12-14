@@ -32,6 +32,7 @@ from PyPDF2 import PdfMerger
 from .std import add_image_to_bills
 from urllib.parse import urlencode
 import requests 
+from PyPDF2 import PdfReader
 
 class IkeaPasswordExpired(Exception) :
     pass
@@ -264,7 +265,15 @@ class IkeaDownloader(BaseIkea) :
       def einvoice_json(self,fromd,tod,bills) : 
            return self.report( "ikea/einvoice_json",r'(":val1":").{8}(",":val2":").{8}(.*":val9":")[^"]*' , 
                               (fromd.strftime("%Y%m%d"),tod.strftime("%Y%m%d"),",".join(bills)) , is_dataframe = False )
-
+      
+      def eway_excel(self,bills:list[str]) :
+          fromd = datetime.date.today() - datetime.timedelta(days=7)
+          tod = datetime.date.today()
+          bills.sort()
+          df = self.report( "ikea/eway_excel",r'(":val1":").{8}(",":val2":").{8}(.*":val5":")[^"]*(",":val6":")[^"]*' , 
+                              (fromd.strftime("%Y%m%d"),tod.strftime("%Y%m%d"),bills[0],bills[-1]) )
+          return df[df["Doc.No"].isin(bills)]
+      
       def pending_statement_pdf(self,beats,date) : 
             r = get_curl("ikea/pending_statement_pdf")
             r.data["strJsonParams"] = curl_replace(r'(beatVal":").{0}(.*colToDate":").{10}(.*colToDateHdr":").{10}', 
@@ -318,7 +327,6 @@ class IkeaDownloader(BaseIkea) :
       def upi_statement(self,fromd,tod) :  
           return self.report("ikea/upi_statement",r'(":val3":"\').{10}(\'",":val4":"\').{10}' ,
                                                        (fromd.strftime("%Y-%m-%d"),tod.strftime("%Y-%m-%d")) )
-
 
 class Billing(IkeaDownloader) :
 
@@ -579,7 +587,24 @@ class Billing(IkeaDownloader) :
             if txt: txts.append( self.download_file( get_bill_durl(group[0],group[-1],"txt")) )
 
         for group in self.group_consecutive_bills(set(self.bills) - set(cash_bills)) :
-            if pdf : pdfs.append( self.download_file( get_bill_durl(group[0],group[-1],"pdf")) )
+            if pdf : 
+                pdf1 = self.download_file( get_bill_durl(group[0],group[-1],"pdf"))
+                pdf2 = self.download_file( get_bill_durl(group[0],group[min(1,len(group)-1)],"pdf"))
+                
+                reader1 = PdfReader(pdf1).pages
+                reader2 = PdfReader(pdf2).pages
+                for page_no in range(len(reader2)) :
+                    if reader2[page_no].extract_text() != reader1[page_no].extract_text() :
+                        pdf1.seek(0)
+                        pdf2.seek(0) 
+                        with open("a.pdf","wb+") as f : 
+                            f.write(pdf1.getvalue())
+                        with open("b.pdf","wb+") as f : 
+                            f.write(pdf2.getvalue())        
+                        raise Exception("Print PDF Problem. Canceled First Copy Printing")
+                
+                pdf1.seek(0)
+                pdfs.append(pdf1)
 
         for group in self.group_consecutive_bills(cash_bills) :
             if pdf : pdfs.append( add_image_to_bills( self.download_file( get_bill_durl(group[0],group[-1],"pdf")) ,
@@ -588,7 +613,7 @@ class Billing(IkeaDownloader) :
         if pdf :     
             merger = PdfMerger()
             for pdf_bytesio in pdfs:
-                pdf_bytesio.seek(0)  # Ensure each BytesIO stream is at the start
+                pdf_bytesio.seek(0)  #Ensure each BytesIO stream is at the start
                 merger.append(pdf_bytesio)
             with open("bill.pdf", "wb+") as f:
                 merger.write(f)
@@ -937,8 +962,28 @@ class Einvoice(Session) :
           html = re.sub(r'href=".*/(.*?)"','href="\\1"',html)
           with open("print_includes/bill.html","w+") as f  : f.write(html)
           os.system("google-chrome --headless --disable-gpu --print-to-pdf=print_includes/bill.pdf print_includes/bill.html")
+      
+      def upload_eway_bill(self,json_path) : 
+        self.get("/SignleSignon/EwayBill").text
+        res = self.get("https://ewaybillgst.gov.in/BillGeneration/BulkUploadEwayBill.aspx")
+        
+        buffer = open(json_path)
+        files = { "ctl00$ContentPlaceHolder1$FileUploadControl" : ("eway.json", buffer  ,'application/json') }
 
-class Eway(Session) : 
+        form = extractForm(res.text)        
+        res = self.post("https://ewaybillgst.gov.in/BillGeneration/BulkUploadEwayBill.aspx",files = files,data =form)
+        with open("a.html","w+") as f : f.write(res.text)
+
+        buffer.seek(0)
+        form = extractForm(res.text) | {"ctl00$ContentPlaceHolder1$hdnConfirm": "Y"}
+        res = self.post("https://ewaybillgst.gov.in/BillGeneration/BulkUploadEwayBill.aspx",files = files,data =form)        
+        with open("a.html","w+") as f : f.write(res.text)
+
+
+    
+
+
+class Eway1(Session) : 
       key = "eway"
       base_url = "https://ewaybillgst.gov.in"
       home = "https://ewaybillgst.gov.in"
