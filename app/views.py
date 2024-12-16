@@ -365,7 +365,7 @@ class ScanPendingBills(View):
 def sync_impact(request):
     bill_counts = {}
     yesterday = datetime.date.today() - datetime.timedelta(days=1)
-    if datetime.date.today().weekday() == 1 :
+    if datetime.date.today().weekday() == 0 :
         yesterday -= datetime.timedelta(days=1)
     yesterday_bills = models.Bill.objects.filter(bill__date = yesterday)
     
