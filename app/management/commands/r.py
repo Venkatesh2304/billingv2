@@ -173,10 +173,6 @@ class NpEncoder(json.JSONEncoder):
 
 
 from custom.classes import Einvoice,Billing
-df = Billing().download_settle_cheque()
-print( "CHEQUE NO"  in df.columns )
-       
-dsf
 
 
 bills = ["A62983"]

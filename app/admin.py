@@ -1245,8 +1245,6 @@ class WholeSalePrintAdmin(PrintAdmin) :
     def get_queryset(self, request):
         return super().get_queryset(request).filter(bill__beat__contains = "WHOLESALE")
 
-
-
 class BillDeliveryAdmin(CustomAdminModel) : 
     
     list_display = ["bill_id","party","vehicle_id","loading_time","delivered","delivered_time","is_loading_sheet","bill_date","beat"]
@@ -1284,8 +1282,6 @@ class BillDeliveryAdmin(CustomAdminModel) :
             pass
         return response
     
-
-
 class BankCollectionInline(admin.TabularInline) : 
     class BankCollectionForm(forms.ModelForm):
         party  = forms.CharField(label="Party",required=False,disabled=True)
