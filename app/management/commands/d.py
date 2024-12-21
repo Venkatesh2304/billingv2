@@ -3,7 +3,7 @@ from custom.classes import Billing
 import pandas as pd
 import datetime 
 
-fromd = datetime.datetime(2019,8,1)
+fromd = datetime.datetime(2019,9,21)
 tod = datetime.datetime(2019,12,31)
 
 def download(fb,tb,pdf_name) :

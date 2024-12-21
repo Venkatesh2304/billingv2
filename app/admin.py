@@ -240,7 +240,6 @@ def sync_reports(billing = None,limits = {},min_days_to_sync = {},retry_no=3) ->
                         raise Exception(f"{functions.delete_type} is not a valid delete type")
                     functions.insert_function(df)
                     models.Sync.objects.update_or_create(process = insert_type.capitalize() , defaults={"time" : datetime.datetime.now()})
-                    break 
             except Exception as e : 
                 traceback.print_exc()
                 print(f"Error in Syncing {insert_type} : {e}")
