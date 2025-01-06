@@ -186,7 +186,11 @@ class IkeaDownloader(BaseIkea) :
           df = self.report("ikea/sales_reg",r'(":val1":").{10}(",":val2":").{10}' ,
                                                        (fromd.strftime("%d/%m/%Y"),tod.strftime("%d/%m/%Y")) )
           date_column = "BillDate/Sales Return Date"
-          df[date_column] = pd.to_datetime(df[date_column],format="%Y-%m-%d").dt.date
+          try :
+              date_series = pd.to_datetime(df[date_column],format="%Y-%m-%d")
+          except : 
+              date_series = pd.to_datetime(df[date_column],format="%d/%m/%Y")
+          df[date_column] = date_series.dt.date
           return df 
       
       
@@ -429,7 +433,10 @@ class Billing(IkeaDownloader) :
     
     def release_creditlock(self, party_data):
         party_credit = self.get_creditlock(party_data)
-        set_url = f'/rsunify/app/billing/updatepartyinfo?partyCodeRef={party_data["partyCode"]}&creditBills={int(party_credit["creditBillsUtilised"])+1}&creditLimit={party_credit["creditLimit"]}&creditDays=0&panNumber=&servicingPlgValue={party_data["showPLG"]}&plgPartyCredit=true&parHllCode={party_data["parHllCode"]}'
+        credit_limit = party_credit["creditLimit"]
+        new_credit_limit = (round(party_credit["creditLimitUtilised"] + party_data["order_value"]) + 10) if credit_limit else 0 
+        new_credit_bills = int(party_credit["creditBillsUtilised"]) + party_data["increase_count"]
+        set_url = f'/rsunify/app/billing/updatepartyinfo?partyCodeRef={party_data["partyCode"]}&creditBills={new_credit_bills}&creditLimit={new_credit_limit}&creditDays=0&panNumber=&servicingPlgValue={party_data["showPLG"]}&plgPartyCredit=true&parHllCode={party_data["parHllCode"]}'
         self.get(set_url)
 
     def release_creditlocks(self,party_datas : list):

@@ -1597,7 +1597,7 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
                     df = pd.read_csv(excel_file , skiprows=0 , sep=sep , names = list(range(0,100)) , header = None)
                     skiprows = -1 
                     acc_no = None 
-                    for i in range(0,20) : 
+                    for i in range(0,20) :   
                         if df.iloc[i][col_number] == col_name : 
                             skiprows = i 
                             break
@@ -1618,9 +1618,9 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
                     df["date"] = pd.to_datetime(df["date"],format='%d %b %Y')
 
                 if bank_name == "kvb" : 
-                    df,acc = skiprows_excel(excel_file,"\tTransaction Date",col_number=0,sep = ",")
-                    df = df.rename(columns={"\tTransaction Date":"date","Credit":"amt","Cheque No.":"ref","Description":"desc"})
-                    df["date"] = pd.to_datetime(df["date"],format='%d-%m-%Y %H:%M:%S')
+                    df,acc = skiprows_excel(excel_file,"Transaction Date",col_number=0,sep = ",")
+                    df = df.rename(columns={"Transaction Date":"date","Credit":"amt","Cheque No.":"ref","Description":"desc"})
+                    df["date"] = pd.to_datetime(df["date"],format='%d-%m-%Y')
                     df = df.sort_values("date")
                     df["ref"] = df["ref"].astype(str).str.split(".").str[0]
 

@@ -22,6 +22,7 @@ DB_NAME = "test_users"
 DB_USER_FIELD = "username"
 DB_COOKIE_FIELD = "_cookies"
 
+
 ## MongoDB setup
 client = MongoClient("mongodb+srv://venkatesh2004:venkatesh2004@cluster0.9x1ccpv.mongodb.net/?retryWrites=true&w=majority")
 # client = get_mongo()
@@ -257,7 +258,7 @@ class Session(requests.Session, ABC):
 
     def send(self, request, *args, **kwargs) -> Response:
         ## Middleware overriding the default send function to capture it in logs
-        response = super().send(request, *args, **kwargs)
+        response = super().send(request, *args, **(kwargs | {"verify":False,"timeout":60}))
         try : 
             self.logger.log_response(response)
         except Exception as e : 
