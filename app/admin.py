@@ -1023,7 +1023,7 @@ class PrintAdmin(CustomAdminModel) :
         return obj.bill.party.name
     
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
-        return super().get_queryset(request) #.filter(bill__date__gte = datetime.date.today() - datetime.timedelta(days=2)) #change
+        return super().get_queryset(request).filter(bill__date__gte = datetime.date.today() - datetime.timedelta(days=3)) #change
 
     def changelist_view(self, request: HttpRequest, extra_context = {}) -> TemplateResponse:
         sync_reports(limits={"sales":5*60})
