@@ -1473,7 +1473,7 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
 
     def get_actions(self,request) : 
         actions = super().get_actions(request)
-        # if "delete_selected" in actions : actions.pop("delete_selected")
+        if "delete_selected" in actions : actions.pop("delete_selected")
         return actions
 
     @admin.display(boolean=True)
