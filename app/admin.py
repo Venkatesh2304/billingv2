@@ -1461,7 +1461,7 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
     change_list_template = "form_and_changelist.html"
     list_display = ["date","ref","desc","amt","bank","saved","type","id"]
     readonly_fields = ["amt","desc","date","ref","bank","idx","id"]
-    hidden_fields = ["idx"]
+    # hidden_fields = ["idx"]
     list_filter = ["date","type","bank"]
     # search_fields = ["amt","desc"]
     list_display_links = ["date","amt"]
@@ -1473,7 +1473,7 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
 
     def get_actions(self,request) : 
         actions = super().get_actions(request)
-        if "delete_selected" in actions : actions.pop("delete_selected")
+        # if "delete_selected" in actions : actions.pop("delete_selected")
         return actions
 
     @admin.display(boolean=True)
