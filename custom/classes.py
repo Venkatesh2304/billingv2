@@ -872,10 +872,9 @@ def myHash(str) :
   md5_hash = hash_object.hexdigest()
   return hashlib.sha256(md5_hash.encode()).hexdigest()
 
-def jsHash(str) : 
-  hash_object = hashlib.md5(str.encode())
-  md5_hash = hash_object.hexdigest()
-  return hashlib.sha256(md5_hash.encode()).hexdigest()
+def sha256_hash(input_str):
+    return hashlib.sha256(input_str.encode()).hexdigest()
+
 
 def extractForm(html,all_forms = False) :
     soup = BeautifulSoup(html, 'html.parser')
@@ -909,8 +908,14 @@ class Einvoice(Session) :
           r = get_curl("einvoice/login")
           if type(self.form) == str : self.form = json.loads(self.form)
           salt = self.get("/Home/GetKey").json()["key"]
-          pwd = hashlib.sha256((myHash(self.config["pwd"]) + salt).encode()).hexdigest()       
-          r.data =  self.form | {'UserLogin.UserName': self.config["username"], 'UserLogin.Password': pwd , "CaptchaCode" : captcha}
+          md5pwd = hashlib.sha256((myHash(self.config["pwd"]) + salt).encode()).hexdigest()       
+          sha_pwd =  sha256_hash(self.config["pwd"])
+          sha_salt_pwd =  sha256_hash(sha_pwd + salt)
+          r.data =  self.form | {'UserLogin.UserName': self.config["username"], 
+                                 'UserLogin.Password': sha_salt_pwd , 
+                                 "CaptchaCode" : captcha, 
+                                 "UserLogin.HiddenPasswordSha":sha_pwd,
+                                 "UserLogin.PasswordMD5":md5pwd}
           response  = r.send(self)
           is_success = (response.url == f"{self.base_url}/Home/MainMenu")
           error_div  = BeautifulSoup(response.text, 'html.parser').find("div",{"class":"divError"})
