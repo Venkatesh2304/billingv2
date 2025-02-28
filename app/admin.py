@@ -1653,13 +1653,16 @@ class BankStatementAdmin(CustomAdminModel,NoSelectActions) :
             bill_chq_pairs = [ (bank_coll.bank_entry_id,bank_coll.bill_id) for bank_coll in qs.all() ]
             dates = models.BankStatement.objects.filter(id = object_id).aggregate(
                                 fromd = Min("ikea_collection__date"), tod = Max("ikea_collection__date"))
-            settle_coll:pd.DataFrame = billing.download_settle_cheque("ALL",dates["fromd"],dates["tod"]) # type: ignore
-            settle_coll = settle_coll[ settle_coll.apply(lambda row : (str(row["CHEQUE NO"]),row["BILL NO"]) in bill_chq_pairs ,axis=1) ]
-            settle_coll["STATUS"] = "BOUNCED"
-            f = BytesIO()
-            settle_coll.to_excel(f,index=False)
-            f.seek(0)
-            res = billing.upload_settle_cheque(f)
+            
+            if dates["fromd"] is not None : 
+                settle_coll:pd.DataFrame = billing.download_settle_cheque("ALL",dates["fromd"],dates["tod"]) # type: ignore
+                settle_coll = settle_coll[ settle_coll.apply(lambda row : (str(row["CHEQUE NO"]),row["BILL NO"]) in bill_chq_pairs ,axis=1) ]
+                settle_coll["STATUS"] = "BOUNCED"
+                f = BytesIO()
+                settle_coll.to_excel(f,index=False)
+                f.seek(0)
+                res = billing.upload_settle_cheque(f)
+                
             qs.update(pushed = False)
             sync_reports(limits = {"collection" : None})
 
