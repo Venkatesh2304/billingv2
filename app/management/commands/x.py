@@ -41,7 +41,7 @@ pd.options.display.float_format = '{:.2f}'.format
 # exit(0)
 from app.models import Orders,OrderProducts,PendingSheet
 cur = connection.cursor()
-df = pd.read_sql(f"select bill_id,-amt from app_bill join app_sales on bill_id=inum where loading_sheet_id is not NULL",connection)
+df = pd.read_sql(f"select * from app_collection where bill_id = 'A78734'",connection)
 df.to_excel("a.xlsx")
 print(df)
 sdf

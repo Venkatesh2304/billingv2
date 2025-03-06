@@ -127,7 +127,7 @@ def CollectionInsert(coll) :
    coll = coll.rename(columns=coll_map)
    coll = coll.dropna(subset="inum")
    coll["date"] = pd.to_datetime(coll.date,dayfirst=True).dt.date
-   coll = coll[coll.Status != "CAN"]
+   coll = coll[coll.Status != "CAN"][coll.Status != "PND"]
 
    coll["bank_entry_id"] = None 
    is_auto_pushed_chq = (coll.Status == "CHQ") & (coll["Collection Settlement Mode"] == "Excel Collection")
