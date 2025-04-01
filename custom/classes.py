@@ -554,7 +554,7 @@ class Billing(IkeaDownloader) :
     def group_consecutive_bills(self,bills):
 
         def extract_serial(bill_number):
-            match = re.search(r'(\D+)(\d{5})$', bill_number)
+            match = re.search(r'(\D+)(\d{5,6})$', bill_number)
             if match:
                 return match.group(1), int(match.group(2))  # Return prefix and serial number as a tuple
             return None, None
@@ -589,7 +589,6 @@ class Billing(IkeaDownloader) :
         if len(self.bills) == 0 : return
         get_bill_durl = lambda billfrom,billto,report_type : self.get(f"/rsunify/app/commonPdfRptContrl/pdfRptGeneration?strJsonParams=%7B%22billFrom%22%3A%22{billfrom}%22%2C%22billTo%22%3A%22{billto}%22%2C%22reportType%22%3A%22{report_type}%22%2C%22blhVatFlag%22%3A2%2C%22shade%22%3A1%2C%22pack%22%3A%22910%22%2C%22damages%22%3Anull%2C%22halfPage%22%3A0%2C%22bp_division%22%3A%22%22%2C%22salesMan%22%3A%22%22%2C%22party%22%3A%22%22%2C%22market%22%3A%22%22%2C%22planset%22%3A%22%22%2C%22fromDate%22%3A%22%22%2C%22toDate%22%3A%22%22%2C%22veh_Name%22%3A%22%22%2C%22printId%22%3A0%2C%22printerName%22%3A%22TVS+MSP+250+Star%22%2C%22Lable_position%22%3A2%2C%22billType%22%3A2%2C%22printOption%22%3A%220%22%2C%22RptClassName%22%3A%22BILL_PRINT_REPORT%22%2C%22reptName%22%3A%22billPrint%22%2C%22RptId%22%3A%22910%22%2C%22freeProduct%22%3A%22Default%22%2C%22shikharQrCode%22%3Anull%2C%22rptTypOpt%22%3A%22pdf%22%2C%22gstTypeVal%22%3A%221%22%2C%22billPrint_isPrint%22%3A0%2C%22units_only%22%3A%22Y%22%7D").text
         pdfs , txts = [], []
-
         for group in self.group_consecutive_bills(self.bills) :
             if txt: txts.append( self.download_file( get_bill_durl(group[0],group[-1],"txt")) )
 

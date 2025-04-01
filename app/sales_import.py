@@ -35,7 +35,7 @@ def sales_insert(sales_reg,sales_gst,sales_type,permanent) :
 
 SALES_DISC_COLUMS = ["schdisc","cashdisc","pecom","btpr","outpyt","ushop","other discount"]
 
-def refresh_outstanding(func) :
+def refresh_outstanding(func) : 
     def decorated_function(*args,**kwargs) :
         func(*args,**kwargs)
         query_db('DELETE FROM app_outstanding')
