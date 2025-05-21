@@ -43,13 +43,10 @@ from app.models import Orders,OrderProducts,PendingSheet
 cur = connection.cursor()
 cur.execute("""
 DELETE FROM app_adjustment
-WHERE ctid IN (
-    SELECT ctid FROM (
-        SELECT ctid,
-               ROW_NUMBER() OVER (PARTITION BY inum ORDER BY ctid) AS rn
-        FROM app_adjustment
-    ) sub
-    WHERE sub.rn > 1
+WHERE ROWID NOT IN (
+    SELECT MIN(ROWID)
+    FROM app_adjustment
+    GROUP BY inum
 )
 """)
 sdf
