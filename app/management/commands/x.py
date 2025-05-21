@@ -41,9 +41,17 @@ pd.options.display.float_format = '{:.2f}'.format
 # exit(0)
 from app.models import Orders,OrderProducts,PendingSheet
 cur = connection.cursor()
-df = pd.read_sql(f"select * from app_collection where bill_id = 'A78734'",connection)
-df.to_excel("a.xlsx")
-print(df)
+cur.execute("""
+DELETE FROM app_adjustment
+WHERE ctid IN (
+    SELECT ctid FROM (
+        SELECT ctid,
+               ROW_NUMBER() OVER (PARTITION BY inum ORDER BY ctid) AS rn
+        FROM app_adjustment
+    ) sub
+    WHERE sub.rn > 1
+)
+""")
 sdf
 # cur.execute("update app_bankstatement set bank = 'KVB CA' where bank = 'kvb' ")
 # cur.execute("update app_bankstatement set bank = 'SBI OD' where bank = 'sbi' ")
